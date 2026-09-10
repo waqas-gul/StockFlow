@@ -1,8 +1,10 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
-
 declare global {
+  /** API exposed to the renderer by the preload script. Empty until IPC contracts are added. */
+  type StockFlowApi = Readonly<Record<string, never>>
+
   interface Window {
-    electron: ElectronAPI
-    api: unknown
+    readonly api: StockFlowApi
   }
 }
+
+export {}

@@ -1,22 +1,12 @@
 import { contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
-const api = {}
+// The renderer's only bridge to the main process. Typed domain functions
+// (window.api.<domain>.<action>) are added in later phases from the shared IPC contract.
+// Nothing else is exposed: no ipcRenderer, no process, no Node APIs.
+const api = Object.freeze({})
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
-  }
-} else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
+if (!process.contextIsolated) {
+  throw new Error('StockFlow requires contextIsolation to be enabled.')
 }
+
+contextBridge.exposeInMainWorld('api', api)
