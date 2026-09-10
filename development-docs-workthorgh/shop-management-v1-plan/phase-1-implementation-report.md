@@ -3,7 +3,8 @@
 > Phase: **1 — UI foundation** (Tailwind CSS v4, shadcn/ui, React Router, application shell, TanStack
 > Query, toasts, error handling, test runner). Date: 2026-09-10.
 > Status: **Implemented and verified**, with the sidebar UI correction (§11) and the theme / colour refinement
-> (§12) applied. **Awaiting approval.** Phase 2 has **not** been started.
+> (§12) applied. Theme/UI approved by the owner. **Final packaged-build verification passed (§13).** Phase 2
+> has **not** been started.
 
 ---
 
@@ -23,7 +24,8 @@
 The only difference from the request is the commit message: *"implement Phase 0 foundation…"* instead of
 *"establish secure StockFlow desktop foundation"*.
 
-Phase 1 changes are **uncommitted**, left in the working tree for review.
+Phase 1 changes were left uncommitted for review. The owner has since committed them: `5bdc0c6` and `46ec900`
+(2026-09-10 15:41), pushed to `origin/main`. Claude made no commits.
 
 ---
 
@@ -650,12 +652,71 @@ Other readability points:
 | Data folders | No `.db`/`.sqlite` files, no `data/` or `backups/` folders |
 | Phase 2 | Not started. No features, data, charts, or logic. |
 
-The packaged app was not rebuilt for this refinement: the change is renderer CSS/classes only, and
-`npm run build` succeeds. **Nothing was committed.**
+The packaged app was not rebuilt at this point; §13 covers the packaged verification. **Nothing was
+committed.**
 
 ---
 
-## 13. Confirmation
+## 13. Final packaged-build verification
+
+Performed after the owner approved the theme/UI, because the renderer theme changed. **No code was changed**:
+the verification found no problems.
+
+**Build:**
+
+- `npm run build:unpack`: ✅ Pass.
+  - Typecheck + electron-vite build: renderer JS 1,224.34 kB, CSS 33.12 kB.
+  - electron-builder 26.15.3 packaged Electron 39.8.10 (win32 x64) to `dist\win-unpacked\StockFlow.exe`.
+
+**How it was verified:**
+
+- `dist\win-unpacked\StockFlow.exe` was launched fresh (no other instance running), with the main-process
+  inspector and the renderer DevTools protocol enabled for the automated checks.
+- The same three check scripts as in dev were run against the **packaged** app, and the screenshots were
+  reviewed.
+
+| # | Requested check | Result | Evidence |
+|---|---|---|---|
+| 1 | Navy sidebar renders correctly | ✅ | Computed sidebar background `oklch(0.275 0.05 257)`, brand text `oklch(0.96 …)`, amber logo `oklch(0.78 0.14 70)`, group labels `oklch(0.72 0.03 255)`; screenshot reviewed |
+| 2 | White top bar and off-white content background | ✅ | Top bar `oklch(1 0 0)`; page `oklch(0.972 0.005 250)`; cards white with soft border and navy-tinted shadow; titles `oklch(0.24 …)`, secondary text `oklch(0.5 …)` |
+| 3 | Active sidebar state and amber indicator visible | ✅ | Active background `oklch(0.36 0.06 257)`, white text, `::before` indicator `oklch(0.78 0.14 70)` at opacity 1 (0 on inactive items); hover lighter than active; keyboard focus = 2px amber ring |
+| 4 | Collapsed sidebar still works | ✅ | 1024×700: 64px icon rail; labels and group titles hidden; icons, logo, and Settings centred; active item highlighted; tooltips "Stock Adjustments" and "Settings" shown; no horizontal overflow |
+| 5 | All routes still work | ✅ | All 11 links: hash, top-bar heading, card title, and single highlighted item all match; reload keeps `#/stock/in`; unknown route → "Page not found" inside the shell; same 11 `href`s in the same order |
+| 6 | No console/runtime errors | ✅ | No exceptions, console errors/warnings, or CSP violations in any of the three runs |
+| 7 | Dev-only Developer Checks do NOT appear | ✅ | Settings shows only the placeholder card: no "Developer checks" text and **0** buttons in the content area |
+| 8 | `window.electron` undefined | ✅ | `typeof window.electron === 'undefined'`; `window.api` is the only exposed object (empty) |
+| 9 | No Node APIs exposed | ✅ | `require`, `process`, `Buffer`, `ipcRenderer` all `undefined` in the renderer |
+| 10 | No database / data / backups folder | ✅ | See the data folders below |
+
+**Check suites run against the packaged app:**
+
+| Suite | Result |
+|---|---|
+| Theme colours + screenshots (dashboard, hover, keyboard focus, Settings, 404, collapsed rail + tooltip, short-window scrolling) | ✅ values as above; no console problems |
+| Sidebar layout suite (§11) | ✅ **40 / 40** (widths, 36px rows, no scrolling at 1580×890 / 1366×768 / 1264×712, hover/active, thin scrollbar on short windows, collapsed rail, tooltips, routes, no console errors) |
+| Phase 0/1 regression, production mode | ✅ **26 / 26** (see below) |
+
+**Phase 0/1 regression in detail:**
+
+- title `StockFlow`
+- `sandbox`, `contextIsolation`, `webSecurity` on; `nodeIntegration` off
+- `userData` = `%APPDATA%\StockFlow`
+- **DevTools blocked** and **no application menu** in production
+- `window.open` and external navigation blocked
+- a second instance exits and restores the first window
+
+**Data folders:**
+
+- **`%APPDATA%\StockFlow`** contains only Chromium profile files (`Cache`, `GPUCache`, `Local Storage`,
+  `Preferences`, …), identical to its contents before launch.
+- **`%APPDATA%\StockFlow-dev`** is the same.
+- In both, there are **no `.db`/`.sqlite` files and no `data/` or `backups/` folders**.
+
+The packaged instance was closed after the checks; no StockFlow processes remain.
+
+---
+
+## 14. Confirmation
 
 - **Phase 2 was NOT started.**
   - No `src/shared` code: no money/quantity/invoice maths, schemas, or IPC contract.
@@ -664,4 +725,5 @@ The packaged app was not rebuilt for this refinement: the change is renderer CSS
   - No sample data.
 - No IPC channels were added, and Phase 0 security is intact.
 - The approved implementation plan was **not** modified.
-- Phase 1 changes are **uncommitted**, ready for your review.
+- Claude made **no commits**. The owner committed Phase 1 (`5bdc0c6`, `46ec900`). The only uncommitted change
+  afterwards is this report's §13 packaged-verification update.
