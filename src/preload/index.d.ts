@@ -1,8 +1,8 @@
-declare global {
-  /** API exposed to the renderer by the preload script. Empty until IPC contracts are added. */
-  type StockFlowApi = Readonly<Record<string, never>>
+import type { StockFlowApi } from '@shared/ipc-contract'
 
+declare global {
   interface Window {
+    /** Exposed by the preload: one function per call in the shared IPC contract. */
     readonly api: StockFlowApi
   }
 }

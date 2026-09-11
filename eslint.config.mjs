@@ -92,5 +92,51 @@ export default defineConfig(
       ]
     }
   },
+  {
+    // Main-process code reaches SQLite only through the Db adapter, so the driver stays swappable.
+    files: ['src/main/**/*.ts'],
+    ignores: ['src/main/db/adapter.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'better-sqlite3',
+              message: 'Use the Db adapter (src/main/db/adapter.ts) instead of the SQLite driver.'
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    // The renderer is sandboxed web content: it reaches the main process only through window.api.
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'electron',
+                'electron/*',
+                '@electron-toolkit/*',
+                'node:*',
+                'fs',
+                'fs/*',
+                'path',
+                'os',
+                'child_process',
+                'better-sqlite3'
+              ],
+              message: 'The renderer has no Node.js or Electron access. Use window.api instead.'
+            }
+          ]
+        }
+      ]
+    }
+  },
   eslintConfigPrettier
 )

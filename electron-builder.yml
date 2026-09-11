@@ -13,6 +13,9 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!development-docs-workthorgh/**'
+  - '!scripts/**'
+  # better-sqlite3 needs only lib/ and build/Release/better_sqlite3.node at runtime; these are its C sources.
+  - '!node_modules/better-sqlite3/{deps,src}/**'
 asarUnpack:
   - resources/**
 win:
@@ -26,5 +29,6 @@ nsis:
   createDesktopShortcut: always
   # Never remove %APPDATA%\StockFlow (the user's data) on uninstall or upgrade.
   deleteAppDataOnUninstall: false
-# Native modules are rebuilt for Electron by the `postinstall` script (electron-builder install-app-deps).
+# better-sqlite3 gets its Electron build from the `postinstall` script (electron-builder install-app-deps),
+# which downloads the prebuilt binary for Electron's ABI. Nothing is compiled, so no C++ build tools are needed.
 npmRebuild: false

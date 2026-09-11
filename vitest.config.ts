@@ -15,11 +15,30 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      // Measured and enforced for the pure shared domain library (plan §25, Phase 2: ≥ 95%).
-      include: ['src/shared/domain/**/*.ts'],
-      exclude: ['src/shared/domain/**/*.test.ts', 'src/shared/domain/test-utils.ts'],
+      // Measured and enforced: the shared code (Phase 2 domain library, Result envelope, IPC contract) and
+      // the Phase 3A database/IPC foundation. Electron entry points (main/index, window, security, paths,
+      // preload/index) need the Electron app itself and are verified by launching it.
+      include: [
+        'src/shared/**/*.ts',
+        'src/main/app-info.ts',
+        'src/main/data-paths.ts',
+        'src/main/errors.ts',
+        'src/main/db/**/*.ts',
+        'src/main/ipc/**/*.ts',
+        'src/preload/api.ts',
+        'src/renderer/src/lib/api.ts',
+        'src/renderer/src/components/common/AboutCard.tsx'
+      ],
+      exclude: ['**/*.test.{ts,tsx}', '**/test-utils.ts'],
       reporter: ['text', 'html'],
-      thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 }
+      thresholds: {
+        statements: 95,
+        branches: 95,
+        functions: 95,
+        lines: 95,
+        // The Phase 2 domain library must also reach 95% on its own (plan §25).
+        'src/shared/domain/**/*.ts': { statements: 95, branches: 95, functions: 95, lines: 95 }
+      }
     }
   }
 })

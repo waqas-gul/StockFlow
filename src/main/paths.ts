@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { APP_DATA_FOLDER } from './app-identity'
+import { resolveDataPaths, type DataPaths } from './data-paths'
 
 /**
  * Pins Electron's userData directory to %APPDATA%\StockFlow, independent of the package
@@ -16,4 +17,9 @@ export function configureUserDataPath(): string {
   const userDataPath = join(app.getPath('appData'), folder)
   app.setPath('userData', userDataPath)
   return userDataPath
+}
+
+/** The data folder and database file under the pinned userData folder (`<userData>\data\shop.db`). */
+export function getDataPaths(): DataPaths {
+  return resolveDataPaths(app.getPath('userData'))
 }

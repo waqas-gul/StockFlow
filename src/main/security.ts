@@ -1,4 +1,4 @@
-import { app, session, type WebContents } from 'electron'
+import { app, session, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { is } from '@electron-toolkit/utils'
@@ -35,6 +35,12 @@ function hardenWebContents(contents: WebContents): void {
     if (!isAppUrl(event.url)) event.preventDefault()
   })
   contents.on('will-attach-webview', (event) => event.preventDefault())
+}
+
+/** IPC is answered only for the app's own document; a frame that has navigated away or closed is refused. */
+export function isTrustedIpcSender(event: IpcMainInvokeEvent): boolean {
+  const frame = event.senderFrame
+  return frame !== null && isAppUrl(frame.url)
 }
 
 /** Must be called before the app is ready. Applies to every current and future window. */
