@@ -6,7 +6,7 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', '**/coverage'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],
@@ -34,6 +34,62 @@ export default defineConfig(
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       'react-refresh/only-export-components': 'off'
+    }
+  },
+  {
+    // src/shared runs in both the main process and the renderer, so it must stay pure TypeScript.
+    files: ['src/shared/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'electron',
+                'electron/*',
+                '@electron-toolkit/*',
+                'react',
+                'react/*',
+                'react-dom',
+                'react-dom/*',
+                'node:*',
+                'fs',
+                'fs/*',
+                'path',
+                'os',
+                'child_process',
+                'better-sqlite3',
+                '@renderer/*',
+                '@tanstack/*',
+                'zustand',
+                'sonner',
+                'lucide-react',
+                'radix-ui'
+              ],
+              message: 'src/shared must stay pure TypeScript, usable by both main and renderer.'
+            }
+          ]
+        }
+      ],
+      'no-restricted-globals': [
+        'error',
+        'window',
+        'document',
+        'navigator',
+        'location',
+        'localStorage',
+        'sessionStorage',
+        'indexedDB',
+        'fetch',
+        'process',
+        'Buffer',
+        'require',
+        '__dirname',
+        '__filename',
+        'global',
+        'globalThis'
+      ]
     }
   },
   eslintConfigPrettier
