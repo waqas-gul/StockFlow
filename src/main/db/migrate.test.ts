@@ -12,22 +12,25 @@ import {
 } from './migrate'
 import { createTempDir, thrown, type TempDir } from './test-utils'
 
-// Technical test fixtures only. They are not the production schema: src/main/db/migrations has no
-// migrations in Phase 3A.
+// Technical test fixtures only, for the generic runner. The production schema lives in
+// src/main/db/migrations and has its own tests.
 const createItems: Migration = {
   version: 1,
   name: '0001_fixture_items',
+  checksum: 'sha256:fixture-items',
   up: (db) =>
     db.exec('CREATE TABLE fixture_items (id INTEGER PRIMARY KEY, label TEXT NOT NULL) STRICT')
 }
 const addNote: Migration = {
   version: 2,
   name: '0002_fixture_note',
+  checksum: 'sha256:fixture-note',
   up: (db) => db.exec('ALTER TABLE fixture_items ADD COLUMN note TEXT')
 }
 const failsHalfway: Migration = {
   version: 3,
   name: '0003_fixture_fails',
+  checksum: 'sha256:fixture-fails',
   up: (db) => {
     db.exec('CREATE TABLE fixture_partial (id INTEGER PRIMARY KEY) STRICT')
     throw new Error('simulated migration failure')
@@ -227,6 +230,7 @@ describe('migrate', () => {
     const throwsText: Migration = {
       version: 1,
       name: '0001_fixture_throws_text',
+      checksum: 'sha256:fixture-throws-text',
       up: () => {
         throw 'plain text failure'
       }
@@ -275,6 +279,7 @@ describe('migrate', () => {
     const asyncMigration = {
       version: 1,
       name: '0001_fixture_async',
+      checksum: 'sha256:fixture-async',
       up: async (target: Db) => target.exec('CREATE TABLE fixture_async (id INTEGER) STRICT')
     } as unknown as Migration
     const error = await migrationError(

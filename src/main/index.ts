@@ -41,7 +41,7 @@ if (!app.requestSingleInstanceLock()) {
     // The database is opened and migrated before any window exists; IPC is served only after that.
     const paths = getDataPaths()
     try {
-      database = await initializeDatabase(paths.databaseFile)
+      database = await initializeDatabase(paths.databaseFile, { appVersion: app.getVersion() })
     } catch (error) {
       console.error('[startup] The database could not be opened.', error)
       const reason = error instanceof Error ? error.message : String(error)

@@ -577,9 +577,12 @@ new database. They can also simply be deleted; the app recreates them.
    - The 2 pre-existing `npm audit` high findings (Electron → `extract-zip`) are fixed only by a major
      Electron upgrade (npm suggests 44.3.0).
    - The driver added **no** new audit findings.
-3. **The first install needs internet access.**
+3. **Installing the project's dependencies needs internet access on the developer/build machine.**
+   (Wording corrected in Phase 3B.)
    - `prebuild-install` downloads both binaries from GitHub, and caches them in the npm cache.
-   - An offline first install would fall back to `node-gyp` and fail without build tools.
+   - An offline first `npm install` would fall back to `node-gyp` and fail without build tools.
+   - This applies only to developer and build machines. The packaged StockFlow installer and app already
+     contain the native binary, so installing and running StockFlow needs no internet.
 4. **`prebuild-install` 7.1.3 is deprecated upstream.** It and 22 transitive packages are copied into
    `app.asar` although they never run at runtime. This is harmless; they could be excluded later.
 5. **Use `npm test`, not plain `npx vitest`.** The database tests need Electron's Node, so an editor's Vitest

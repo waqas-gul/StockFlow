@@ -20,7 +20,12 @@ export const CONNECTION_PRAGMAS = Object.freeze({
   /** FULL (2): every commit is flushed to disk. */
   synchronous: 2,
   /** Wait up to 5 seconds for a lock before failing with SQLITE_BUSY. */
-  busy_timeout: 5000
+  busy_timeout: 5000,
+  /**
+   * ON: when INSERT OR REPLACE removes a conflicting row, that table's DELETE triggers fire. Without it, REPLACE
+   * would silently bypass the append-only triggers of the ledgers.
+   */
+  recursive_triggers: 1
 })
 
 export type ConnectionPragma = keyof typeof CONNECTION_PRAGMAS
@@ -70,7 +75,8 @@ export function readConnectionPragmas(db: Db): Record<ConnectionPragma, SqlValue
     foreign_keys: pragma(db, 'foreign_keys'),
     journal_mode: pragma(db, 'journal_mode'),
     synchronous: pragma(db, 'synchronous'),
-    busy_timeout: pragma(db, 'busy_timeout')
+    busy_timeout: pragma(db, 'busy_timeout'),
+    recursive_triggers: pragma(db, 'recursive_triggers')
   }
 }
 
@@ -94,6 +100,7 @@ function applyConnectionPragmas(db: Db): void {
   db.exec(`PRAGMA busy_timeout = ${CONNECTION_PRAGMAS.busy_timeout}`)
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA synchronous = FULL')
+  db.exec('PRAGMA recursive_triggers = ON')
 
   const actual = readConnectionPragmas(db)
   for (const [name, expected] of Object.entries(CONNECTION_PRAGMAS)) {

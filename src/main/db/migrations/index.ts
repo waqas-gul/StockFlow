@@ -1,9 +1,13 @@
 import type { Migration } from '../migrate'
+import { initialMigration } from './0001_initial'
 
 /**
- * The production schema migrations, in order.
+ * The production schema migrations, in order. They are forward-only: once a migration has shipped it is never
+ * edited or removed, and the next schema change is a new file (0002_…) appended here.
  *
- * Phase 3A deliberately ships none. `0001_initial` (the V1 business schema) is written only after the client
- * answers the plan's §27 Group A and B questions. Technical test migrations live in the tests only.
+ * Each migration pins its `checksum`: the SHA-256 of its SQL script (UTF-8), written `sha256:<64 hex digits>`.
+ * It is recorded in schema_migrations when the migration is applied, and never recomputed at run time. The
+ * migration tests fail when a script no longer matches its pinned checksum; for a new migration, that failing test
+ * reports the value to pin.
  */
-export const migrations: readonly Migration[] = Object.freeze([])
+export const migrations: readonly Migration[] = Object.freeze([initialMigration])

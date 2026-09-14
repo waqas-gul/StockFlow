@@ -8,10 +8,10 @@ import {
   readConnectionPragmas,
   readUserVersion
 } from './connection'
-import { initializeDatabase, preMigrationBackupNotAvailable } from './index'
-import { validateMigrations, type MigrationPlan } from './migrate'
+import { initializeDatabase, preMigrationBackupNotAvailable, recordSchemaMigration } from './index'
+import { migrate, validateMigrations, type Migration, type MigrationPlan } from './migrate'
 import { migrations } from './migrations'
-import { createTempDir, type TempDir } from './test-utils'
+import { TEST_APP_VERSION, createTempDir, sqlChecksum, type TempDir } from './test-utils'
 
 let temp: TempDir
 
@@ -24,41 +24,81 @@ afterEach(() => {
 })
 
 const plan: MigrationPlan = { currentVersion: 0, latestVersion: 1, pending: [] }
+const options = { appVersion: TEST_APP_VERSION }
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+
+interface SchemaMigrationRow {
+  version: number
+  name: string
+  applied_at: string
+  app_version: string
+  checksum: string
+}
+
+function schemaMigrations(db: ReturnType<typeof openDatabase>): SchemaMigrationRow[] {
+  return db.all<SchemaMigrationRow>('SELECT * FROM schema_migrations ORDER BY version')
+}
 
 describe('production migrations', () => {
   it('form a valid list', () => {
     expect(() => validateMigrations(migrations)).not.toThrow()
   })
 
-  it('contain no schema in Phase 3A (0001_initial waits for the business answers)', () => {
-    expect(migrations).toEqual([])
+  it('contain the V1 schema, 0001_initial, as schema version 1', () => {
+    expect(migrations.map((migration) => [migration.version, migration.name])).toEqual([
+      [1, '0001_initial']
+    ])
   })
 })
 
 describe('initializeDatabase', () => {
-  it('creates the technical database: StockFlow id, schema 0, verified pragmas and no tables', async () => {
+  it('creates a new StockFlow database at the latest schema with verified pragmas', async () => {
     const file = temp.file('StockFlow-test/data/shop.db')
-    const db = temp.track(await initializeDatabase(file))
+    const db = temp.track(await initializeDatabase(file, options))
     expect(existsSync(file)).toBe(true)
     expect(readApplicationId(db)).toBe(STOCKFLOW_APPLICATION_ID)
-    expect(readUserVersion(db)).toBe(0)
+    expect(readUserVersion(db)).toBe(migrations.length)
     expect(readConnectionPragmas(db)).toEqual(CONNECTION_PRAGMAS)
-    expect(db.all('SELECT type, name FROM sqlite_schema')).toEqual([])
   })
 
-  it('opens the same database again', async () => {
+  it('records the applied migration in schema_migrations with the app version and checksum', async () => {
+    const before = new Date().toISOString()
+    const db = temp.track(await initializeDatabase(temp.file('shop.db'), options))
+    const after = new Date().toISOString()
+    const [row, ...others] = schemaMigrations(db)
+    expect(others).toEqual([])
+    expect(row).toMatchObject({
+      version: 1,
+      name: '0001_initial',
+      app_version: TEST_APP_VERSION,
+      checksum: migrations[0].checksum
+    })
+    expect(row.applied_at).toMatch(ISO_UTC)
+    expect(row.applied_at >= before && row.applied_at <= after).toBe(true)
+  })
+
+  it('opens the same database again without migrating or seeding it again', async () => {
     const file = temp.file('shop.db')
-    ;(await initializeDatabase(file)).close()
-    const again = temp.track(await initializeDatabase(file))
+    const first = await initializeDatabase(file, options)
+    const firstRows = schemaMigrations(first)
+    const firstCustomers = first.all('SELECT * FROM customers')
+    first.close()
+
+    const again = temp.track(await initializeDatabase(file, { appVersion: '9.9.9' }))
     expect(readApplicationId(again)).toBe(STOCKFLOW_APPLICATION_ID)
+    expect(readUserVersion(again)).toBe(1)
+    expect(schemaMigrations(again)).toEqual(firstRows)
+    expect(again.all('SELECT * FROM customers')).toEqual(firstCustomers)
   })
 
   it('refuses a database from a newer StockFlow version and releases the file', async () => {
     const file = temp.file('shop.db')
     const newer = openDatabase(file)
-    newer.exec('PRAGMA user_version = 1')
+    newer.exec(`PRAGMA user_version = ${migrations.length + 1}`)
     newer.close()
-    await expect(initializeDatabase(file)).rejects.toMatchObject({ code: 'DATABASE_TOO_NEW' })
+    await expect(initializeDatabase(file, options)).rejects.toMatchObject({
+      code: 'DATABASE_TOO_NEW'
+    })
     // Windows refuses to delete a file that is still open.
     rmSync(file)
   })
@@ -66,7 +106,47 @@ describe('initializeDatabase', () => {
   it('refuses a file that is not a StockFlow database', async () => {
     const file = temp.file('shop.db')
     writeFileSync(file, 'not a database '.repeat(100))
-    await expect(initializeDatabase(file)).rejects.toMatchObject({ code: 'NOT_STOCKFLOW_DATABASE' })
+    await expect(initializeDatabase(file, options)).rejects.toMatchObject({
+      code: 'NOT_STOCKFLOW_DATABASE'
+    })
+  })
+
+  it('does not migrate a schema-0 database that already holds data, and leaves it unchanged', async () => {
+    const file = temp.file('shop.db')
+    const existing = openDatabase(file)
+    existing.exec("CREATE TABLE probe (v TEXT) STRICT; INSERT INTO probe VALUES ('kept')")
+    existing.close()
+
+    await expect(initializeDatabase(file, options)).rejects.toMatchObject({
+      code: 'BACKUP_FAILED'
+    })
+    const check = temp.track(openDatabase(file))
+    expect(readUserVersion(check)).toBe(0)
+    expect(check.all("SELECT name FROM sqlite_schema WHERE type = 'table'")).toEqual([
+      { name: 'probe' }
+    ])
+  })
+})
+
+describe('recordSchemaMigration', () => {
+  it('writes version, name, UTC time, app version and checksum', async () => {
+    const db = temp.track(await initializeDatabase(temp.file('shop.db'), options))
+    const sql = 'CREATE TABLE fixture_later (id INTEGER PRIMARY KEY) STRICT'
+    const later: Migration = {
+      version: 2,
+      name: '0002_fixture_later',
+      checksum: sqlChecksum(sql),
+      up: (target) => target.exec(sql)
+    }
+    db.transaction(() => recordSchemaMigration('2.0.0')(db, later))
+    const row = schemaMigrations(db)[1]
+    expect(row).toMatchObject({
+      version: 2,
+      name: '0002_fixture_later',
+      app_version: '2.0.0',
+      checksum: sqlChecksum(sql)
+    })
+    expect(row.applied_at).toMatch(ISO_UTC)
   })
 })
 
@@ -98,5 +178,25 @@ describe('preMigrationBackupNotAvailable (placeholder until the Phase 4 backup s
     db.exec('CREATE TABLE probe (v TEXT) STRICT')
     await preMigrationBackupNotAvailable(db, plan).catch(() => undefined)
     expect(readdirSync(temp.path).sort()).toEqual(['shop.db', 'shop.db-shm', 'shop.db-wal'])
+  })
+
+  it('blocks every future migration of a schema-1 database until verified backups exist', async () => {
+    const db = temp.track(await initializeDatabase(temp.file('shop.db'), options))
+    const sql = 'CREATE TABLE fixture_future (id INTEGER PRIMARY KEY) STRICT'
+    const future: Migration = {
+      version: 2,
+      name: '0002_fixture_future',
+      checksum: sqlChecksum(sql),
+      up: (target) => target.exec(sql)
+    }
+    await expect(
+      migrate(db, [...migrations, future], {
+        backupBeforeMigrating: preMigrationBackupNotAvailable,
+        recordMigration: recordSchemaMigration(TEST_APP_VERSION)
+      })
+    ).rejects.toMatchObject({ code: 'BACKUP_FAILED' })
+    expect(readUserVersion(db)).toBe(1)
+    expect(db.all("SELECT name FROM sqlite_schema WHERE name = 'fixture_future'")).toEqual([])
+    expect(schemaMigrations(db).map((row) => row.version)).toEqual([1])
   })
 })

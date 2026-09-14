@@ -57,7 +57,8 @@ describe('openDatabase', () => {
       foreign_keys: 1,
       journal_mode: 'wal',
       synchronous: 2,
-      busy_timeout: 5000
+      busy_timeout: 5000,
+      recursive_triggers: 1
     })
     expect(readConnectionPragmas(openApp())).toEqual(CONNECTION_PRAGMAS)
   })

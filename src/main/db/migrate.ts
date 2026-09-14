@@ -7,6 +7,11 @@ export interface Migration {
   readonly version: number
   /** For example `0001_initial`. */
   readonly name: string
+  /**
+   * The SHA-256 of the migration's SQL, written `sha256:<64 hex digits>`. It is pinned in the migration's source
+   * and recorded in `schema_migrations`; it is never recomputed at run time.
+   */
+  readonly checksum: string
   /** Applies the change. It runs inside the runner's transaction and must be synchronous. */
   up(db: Db): void
 }
