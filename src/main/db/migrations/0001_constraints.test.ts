@@ -6,6 +6,7 @@ import {
   insertDocuments,
   insertMasters,
   insertRow,
+  isBetween,
   rows,
   sqliteCodeOf,
   thrown,
@@ -254,7 +255,7 @@ describe('dates and timestamps', () => {
       [id]
     )
     expect(row?.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
-    expect(row!.created_at >= before && row!.created_at <= after).toBe(true)
+    expect(isBetween(row!.created_at, before, after)).toBe(true)
     expect(row?.updated_at).toBe(row?.created_at)
   })
 })

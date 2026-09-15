@@ -8,6 +8,7 @@ import {
   createSchemaDatabase,
   createTempDir,
   sqlChecksum,
+  testContext,
   type TempDir
 } from '../test-utils'
 import { INITIAL_SCHEMA_SQL, initialMigration } from './0001_initial'
@@ -176,7 +177,7 @@ describe('0001_initial: definition', () => {
 
 describe('0001_initial: migrating a new database', () => {
   it('migrates a new StockFlow database from schema 0 to schema 1', async () => {
-    const file = temp.file('shop.db')
+    const file = testContext(temp).paths.databaseFile
     const fresh = openDatabase(file)
     expect(readUserVersion(fresh)).toBe(0)
     fresh.close()

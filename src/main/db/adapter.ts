@@ -47,12 +47,15 @@ export interface Db {
 export interface OpenOptions {
   /** Open without write access. The file must already exist. */
   readonly readonly?: boolean
+  /** Refuse to create the file when it is missing (always the case with `readonly`). */
+  readonly mustExist?: boolean
 }
 
 /** Opens a SQLite file with the selected driver and no StockFlow configuration (see connection.ts). */
 export function openSqlite(file: string, options: OpenOptions = {}): Db {
   const readonly = options.readonly === true
-  return new BetterSqlite3Db(new Database(file, { readonly, fileMustExist: readonly }))
+  const fileMustExist = readonly || options.mustExist === true
+  return new BetterSqlite3Db(new Database(file, { readonly, fileMustExist }))
 }
 
 /** The SQLite result code of a driver error (e.g. `SQLITE_CONSTRAINT_UNIQUE`); undefined for other errors. */

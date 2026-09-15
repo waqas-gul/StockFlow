@@ -1,10 +1,10 @@
-import { randomBytes } from 'node:crypto'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { z } from 'zod'
 import type { IpcAction, IpcChannel, IpcDomain, IpcInput, IpcOutput } from '@shared/ipc-contract'
 import { fail, ok, type AppError, type Result } from '@shared/types/result'
 import { sqliteErrorCode } from '../db/adapter'
-import { AppFailure } from '../errors'
+import { AppFailure, fieldErrorsOf } from '../errors'
+import { createErrorRef, type Logger } from '../logging'
 
 /** The validated input of a call: `undefined` for a call that takes none. */
 export type HandlerInput<Input> = [Input] extends [void] ? undefined : Input
@@ -33,8 +33,11 @@ export interface IpcRegistrar {
 export interface HandlerOptions {
   /** True when the request comes from the app's own renderer document. */
   readonly isTrustedSender: (event: IpcMainInvokeEvent) => boolean
-  /** Receives refused requests and the full detail of unexpected failures. Never sent to the renderer. */
-  readonly logError: (message: string, error: unknown) => void
+  /**
+   * Receives refused requests and the full detail of unexpected failures, with their reference. Nothing logged is
+   * sent to the renderer, and the request input is never logged.
+   */
+  readonly log: Pick<Logger, 'warn' | 'error'>
 }
 
 /**
@@ -48,10 +51,9 @@ export function createIpcHandler<Input, Output>(
 ): (event: IpcMainInvokeEvent, input?: unknown) => Promise<Result<Output>> {
   return async (event, input) => {
     if (!options.isTrustedSender(event)) {
-      options.logError(
-        `[ipc] ${channel}: refused a request from an untrusted sender`,
-        event.senderFrame?.url ?? null
-      )
+      options.log.warn(`[ipc] ${channel}: refused a request from an untrusted sender`, {
+        sender: event.senderFrame?.url ?? null
+      })
       return fail({ code: 'FORBIDDEN', message: 'This request is not allowed.' })
     }
     const parsed = handler.input.safeParse(input)
@@ -82,14 +84,12 @@ export function registerIpcHandlers(
   return channels
 }
 
-/** Zod issues as form field errors. Issues about the input as a whole go under `root`. */
 function validationError(error: z.ZodError): AppError {
-  const fieldErrors: Record<string, string[]> = {}
-  for (const issue of error.issues) {
-    const key = issue.path.length === 0 ? 'root' : issue.path.map(String).join('.')
-    ;(fieldErrors[key] ??= []).push(issue.message)
+  return {
+    code: 'VALIDATION',
+    message: 'The request was not valid.',
+    fieldErrors: fieldErrorsOf(error)
   }
-  return { code: 'VALIDATION', message: 'The request was not valid.', fieldErrors }
 }
 
 // User-facing guidance for SQLite failures caused by the environment rather than by a bug.
@@ -118,8 +118,8 @@ function failureOf(error: unknown, channel: string, options: HandlerOptions): Ap
   if (error instanceof AppFailure) return error.error
 
   // Unexpected: log everything here, send only a reference to the renderer.
-  const ref = randomBytes(3).toString('hex').toUpperCase()
-  options.logError(`[ipc] ${channel} failed (ref ${ref})`, error)
+  const ref = createErrorRef()
+  options.log.error(`[ipc] ${channel} failed`, error, { ref })
   const code = sqliteErrorCode(error)
   const guidance = DATABASE_GUIDANCE.find(
     ([prefix]) => code === prefix || code?.startsWith(`${prefix}_`)

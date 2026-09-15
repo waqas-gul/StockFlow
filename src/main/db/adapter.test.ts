@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { openSqlite, sqliteErrorCode, type Db } from './adapter'
+import { openSqlite, sqliteErrorCode, type Db, type OpenOptions } from './adapter'
 import { createTempDir, thrown, type TempDir } from './test-utils'
 
 let temp: TempDir
@@ -13,7 +13,7 @@ afterEach(() => {
   temp.remove()
 })
 
-function open(name = 'test.db', options?: { readonly?: boolean }): Db {
+function open(name = 'test.db', options?: OpenOptions): Db {
   return temp.track(openSqlite(temp.file(name), options))
 }
 
@@ -48,6 +48,15 @@ describe('openSqlite', () => {
 
   it('never creates a missing file when opening read-only', () => {
     expect(() => open('missing.db', { readonly: true })).toThrow()
+    expect(existsSync(temp.file('missing.db'))).toBe(false)
+  })
+
+  it('opens an existing file for writing, but never creates a missing one, with mustExist', () => {
+    openWithTable('existing.db')
+    const db = open('existing.db', { mustExist: true })
+    db.run('INSERT INTO probe (label) VALUES (?)', ['x'])
+    expect(count(db)).toBe(1)
+    expect(() => open('missing.db', { mustExist: true })).toThrow()
     expect(existsSync(temp.file('missing.db'))).toBe(false)
   })
 })

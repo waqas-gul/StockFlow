@@ -1,55 +1,61 @@
+import { errorCodeOf } from '../logging'
 import type { Db } from './adapter'
-import { isEmptyDatabase, openDatabase } from './connection'
-import { migrate, type MigrationRecorder, type PreMigrationBackup } from './migrate'
-import { migrations } from './migrations'
+import { ensureBackupFolders } from './backup'
+import { openDatabase } from './connection'
+import type { DataSafetyContext } from './context'
+import { checkSchemaHistory } from './integrity'
+import { recoverInterruptedRestore } from './restore'
+import { upgradeSchema } from './schema-upgrade'
 
-/**
- * Placeholder for the verified pre-migration backup of Phase 4. It never pretends to back anything up: it lets
- * migrations run only on an empty database (nothing to lose) and refuses every other database. So 0001_initial
- * can create a new database, but no later migration can touch a database that holds a schema until Phase 4
- * replaces this with a real, verified backup.
- */
-export const preMigrationBackupNotAvailable: PreMigrationBackup = async (db) => {
-  if (isEmptyDatabase(db)) return
-  throw new Error(
-    'A verified pre-migration backup is required before an existing database can be migrated, ' +
-      'and backups are not available yet (Phase 4).'
-  )
-}
-
-/**
- * Records an applied migration in `schema_migrations`. The runner calls it inside the migration's own
- * transaction, so the row exists exactly when the migration does.
- */
-export function recordSchemaMigration(appVersion: string): MigrationRecorder {
-  return (db, migration) => {
-    db.run(
-      `INSERT INTO schema_migrations (version, name, applied_at, app_version, checksum)
-       VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ?, ?)`,
-      [migration.version, migration.name, appVersion, migration.checksum]
-    )
-  }
-}
-
-export interface InitializeOptions {
-  /** The running app's version, recorded with every migration it applies. */
-  readonly appVersion: string
-}
+export { recordSchemaMigration, verifiedPreMigrationBackup } from './schema-upgrade'
 
 /**
  * Opens the app database and brings its schema up to date. Call it before any window or IPC handler exists.
+ *
+ * 1. A restore interrupted by a crash is rolled back, so an incomplete restore is never opened.
+ * 2. The database is opened with verified connection pragmas and its StockFlow marker checked.
+ * 3. Pending migrations run, after a verified pre-migration backup when the database holds anything.
+ * 4. The recorded schema history (migration names and checksums) is compared with this app's migrations. A
+ *    mismatch is logged as a warning and never changed: it does not stop the app, because the data itself passed
+ *    the checks above; the maintenance integrity report shows it as an error.
+ * 5. The backup folders are created (a failure is logged; backups report their own failures).
+ *
  * On failure the connection is closed and the error thrown.
  */
-export async function initializeDatabase(file: string, options: InitializeOptions): Promise<Db> {
-  const db = openDatabase(file)
+export async function initializeDatabase(ctx: DataSafetyContext): Promise<Db> {
+  recoverInterruptedRestore(ctx.paths.databaseFile, ctx.log)
+  const db = openDatabase(ctx.paths.databaseFile)
   try {
-    await migrate(db, migrations, {
-      backupBeforeMigrating: preMigrationBackupNotAvailable,
-      recordMigration: recordSchemaMigration(options.appVersion)
+    const migration = await upgradeSchema(db, ctx)
+    ctx.log.info('[startup] database ready', {
+      schema: migration.toVersion,
+      migrated: migration.applied.length
     })
+    reportSchemaHistory(db, ctx)
+    prepareBackupFolders(ctx)
     return db
   } catch (error) {
     db.close()
     throw error
+  }
+}
+
+function reportSchemaHistory(db: Db, ctx: DataSafetyContext): void {
+  const history = checkSchemaHistory(db, ctx.migrations)
+  if (history.status === 'OK') {
+    ctx.log.info('[startup] schema history verified')
+    return
+  }
+  ctx.log.warn(
+    '[startup] the recorded schema history does not match this version of StockFlow; it is reported, not changed',
+    { issues: history.issues.length, detail: history.issues.join(' | ') }
+  )
+}
+
+function prepareBackupFolders(ctx: DataSafetyContext): void {
+  try {
+    ensureBackupFolders(ctx.paths)
+  } catch (error) {
+    ctx.log.warn('[startup] the backup folders could not be created', { code: errorCodeOf(error) })
   }
 }

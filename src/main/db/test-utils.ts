@@ -1,10 +1,15 @@
 // Test-only helpers for the database tests. Excluded from coverage and never imported by application code.
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { sqliteErrorCode, type Db, type SqlValue } from './adapter'
+import { dirname, join } from 'node:path'
+import { resolveDataPaths } from '../data-paths'
+import type { LogContext, LogLevel, Logger } from '../logging'
+import { openSqlite, sqliteErrorCode, type Db, type SqlValue } from './adapter'
+import type { DataSafetyContext } from './context'
 import { initializeDatabase } from './index'
+import type { Migration } from './migrate'
+import { migrations } from './migrations'
 
 export interface TempDir {
   readonly path: string
@@ -60,9 +65,154 @@ export function sqlChecksum(sql: string): string {
   return `sha256:${createHash('sha256').update(sql, 'utf8').digest('hex')}`
 }
 
-/** A new database migrated to the latest schema, exactly as the app creates it on first start. */
-export async function createSchemaDatabase(temp: TempDir, name = 'shop.db'): Promise<Db> {
-  return temp.track(await initializeDatabase(temp.file(name), { appVersion: TEST_APP_VERSION }))
+/** A new database at `<temp>\data\shop.db`, migrated to the latest schema exactly as the app does on first start. */
+export async function createSchemaDatabase(temp: TempDir): Promise<Db> {
+  return temp.track(await initializeDatabase(testContext(temp)))
+}
+
+// --- Data-safety fixtures ---
+
+/** A fixed local time, 14 Sep 2026 15:30:45, for deterministic backup names (they use local time). */
+export const TEST_TIME = new Date(2026, 8, 14, 15, 30, 45)
+
+export interface LogEntry {
+  readonly level: LogLevel
+  readonly message: string
+  readonly error?: unknown
+  readonly context?: LogContext
+}
+
+export interface MemoryLogger extends Logger {
+  readonly entries: LogEntry[]
+}
+
+/** A logger that keeps its entries in memory for assertions. */
+export function createMemoryLogger(): MemoryLogger {
+  const entries: LogEntry[] = []
+  return {
+    entries,
+    info: (message, context) => entries.push({ level: 'INFO', message, context }),
+    warn: (message, context) => entries.push({ level: 'WARN', message, context }),
+    error: (message, error, context) => entries.push({ level: 'ERROR', message, error, context })
+  }
+}
+
+export type TestContext = DataSafetyContext & { readonly log: MemoryLogger }
+
+/**
+ * A data-safety context rooted in `temp`: the database at `<temp>\data\shop.db`, backups under `<temp>\backups`,
+ * the production migrations, a memory logger and the real clock (unless overridden).
+ */
+export function testContext(
+  temp: TempDir,
+  overrides: Partial<Omit<DataSafetyContext, 'log'>> = {}
+): TestContext {
+  return {
+    paths: resolveDataPaths(temp.path),
+    appVersion: TEST_APP_VERSION,
+    log: createMemoryLogger(),
+    migrations,
+    now: () => new Date(),
+    ...overrides
+  }
+}
+
+/** A technical test-only migration (never a production one). */
+export function fixtureMigration(
+  version: number,
+  name: string,
+  sql: string,
+  before?: (db: Db) => void
+): Migration {
+  return {
+    version,
+    name,
+    checksum: sqlChecksum(sql),
+    up: (db) => {
+      before?.(db)
+      db.exec(sql)
+    }
+  }
+}
+
+/**
+ * True when the ISO time `time` (written by SQLite) lies between `before` and `after` (read by the test). SQLite
+ * and V8 read the Windows clock separately and can disagree by a millisecond or two, so a small tolerance applies.
+ */
+export function isBetween(time: string, before: string, after: string, toleranceMs = 50): boolean {
+  const at = Date.parse(time)
+  return at >= Date.parse(before) - toleranceMs && at <= Date.parse(after) + toleranceMs
+}
+
+/** SHA-256 of a file's bytes, to prove that a file was not changed. */
+export function fileHash(file: string): string {
+  return createHash('sha256').update(readFileSync(file)).digest('hex')
+}
+
+/** `db`, except that its online backup fails, as if SQLite could not write the copy. */
+export function withFailingBackup(db: Db, error = new Error('simulated backup failure')): Db {
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === 'backup') return () => Promise.reject(error)
+      const value: unknown = Reflect.get(target, property, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    }
+  })
+}
+
+/** Replaces `folder` (created at startup) with a file of that name, so nothing can be written into it. */
+export function replaceFolderWithFile(folder: string): void {
+  rmSync(folder, { recursive: true, force: true })
+  mkdirSync(dirname(folder), { recursive: true })
+  writeFileSync(folder, 'a file where the folder should be')
+}
+
+/** Opens `file` with another raw connection, as another program would. Windows then refuses to rename or delete it. */
+export function holdOpen(temp: TempDir, file: string): Db {
+  return temp.track(openSqlite(file, { mustExist: true }))
+}
+
+/**
+ * Adds a settings row that breaks its CHECK constraint (a value that is not JSON) to a closed schema database:
+ * PRAGMA integrity_check then reports "CHECK constraint failed in settings".
+ */
+export function violateCheckConstraint(file: string): void {
+  editDatabaseFile(
+    file,
+    "PRAGMA ignore_check_constraints = ON; INSERT INTO settings (key, value) VALUES ('probe.broken', 'not json')"
+  )
+}
+
+/** Overwrites the cells of the first leaf page of `index` in a closed database: SQLite then finds it malformed. */
+export function corruptIndex(file: string, index: string): void {
+  const db = openSqlite(file, { mustExist: true })
+  let pageSize: number
+  let page: number
+  try {
+    pageSize = db.get<{ page_size: number }>('PRAGMA page_size')!.page_size
+    page = db.get<{ pageno: number }>(
+      "SELECT pageno FROM dbstat WHERE name = ? AND pagetype = 'leaf' ORDER BY pageno LIMIT 1",
+      [index]
+    )!.pageno
+  } finally {
+    db.close()
+  }
+  const bytes = readFileSync(file)
+  // Cells are stored from the end of the page backwards.
+  bytes.fill(0x41, page * pageSize - 64, page * pageSize)
+  writeFileSync(file, bytes)
+}
+
+/** Runs `script` on a closed database file with a raw connection that does not enforce foreign keys. */
+export function editDatabaseFile(file: string, script: string): void {
+  const db = openSqlite(file, { mustExist: true })
+  try {
+    // better-sqlite3 enables foreign keys by default.
+    db.exec('PRAGMA foreign_keys = OFF')
+    db.exec(script)
+  } finally {
+    db.close()
+  }
 }
 
 export type Row = Record<string, SqlValue>

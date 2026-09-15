@@ -31,7 +31,7 @@ beforeEach(() => {
     },
     {
       isTrustedSender: (event) => event.senderFrame?.url === APP_URL,
-      logError: () => undefined
+      log: { warn: () => undefined, error: () => undefined }
     }
   )
 })

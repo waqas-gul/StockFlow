@@ -7,6 +7,7 @@ import type { Result } from '@shared/types/result'
 import { openSqlite, type Db } from '../db/adapter'
 import { createTempDir, type TempDir } from '../db/test-utils'
 import { AppFailure } from '../errors'
+import type { LogContext } from '../logging'
 import { createIpcHandler, registerIpcHandlers, type HandlerOptions } from './handle'
 
 const APP_URL = 'file:///C:/Program%20Files/StockFlow/resources/app.asar/out/renderer/index.html'
@@ -17,13 +18,23 @@ function eventFrom(url: string | null): IpcMainInvokeEvent {
 
 const trusted = eventFrom(APP_URL)
 
-/** Handler options that trust only APP_URL and record every logged error. */
-function testOptions(): HandlerOptions & { logged: Array<[string, unknown]> } {
-  const logged: Array<[string, unknown]> = []
+interface Logged {
+  level: 'warn' | 'error'
+  message: string
+  error?: unknown
+  context?: LogContext
+}
+
+/** Handler options that trust only APP_URL and record every log entry. */
+function testOptions(): HandlerOptions & { logged: Logged[] } {
+  const logged: Logged[] = []
   return {
     logged,
     isTrustedSender: (event) => event.senderFrame?.url === APP_URL,
-    logError: (message, error) => logged.push([message, error])
+    log: {
+      warn: (message, context) => logged.push({ level: 'warn', message, context }),
+      error: (message, error, context) => logged.push({ level: 'error', message, error, context })
+    }
   }
 }
 
@@ -48,7 +59,7 @@ function openWithTable(): Db {
 /** Runs `fail` inside a handler and returns the handler's Result and the log. */
 async function failingCall(
   fail: () => unknown
-): Promise<{ result: Result<unknown>; logged: Array<[string, unknown]> }> {
+): Promise<{ result: Result<unknown>; logged: Logged[] }> {
   const options = testOptions()
   const handler = createIpcHandler('test:fail', { input: z.undefined(), run: fail }, options)
   return { result: await handler(trusted, undefined), logged: options.logged }
@@ -132,7 +143,11 @@ describe('createIpcHandler', () => {
       })
     }
     expect(called).toBe(false)
-    expect(options.logged).toHaveLength(2)
+    const refused = '[ipc] test:double: refused a request from an untrusted sender'
+    expect(options.logged).toEqual([
+      { level: 'warn', message: refused, context: { sender: 'https://evil.example/' } },
+      { level: 'warn', message: refused, context: { sender: null } }
+    ])
   })
 
   it('passes an expected AppFailure through unchanged, without logging', async () => {
@@ -158,7 +173,34 @@ describe('createIpcHandler', () => {
     })
     const sent = JSON.stringify(result)
     expect(sent).not.toMatch(/owner|ENOENT|shop\.db|\bat\b/)
-    expect(logged).toEqual([[expect.stringContaining(result.error.ref as string), secret]])
+    expect(logged).toEqual([
+      {
+        level: 'error',
+        message: '[ipc] test:fail failed',
+        error: secret,
+        context: { ref: result.error.ref }
+      }
+    ])
+  })
+
+  it('never passes the request input to the log', async () => {
+    const options = testOptions()
+    const handler = createIpcHandler(
+      'test:save',
+      {
+        input: z.strictObject({ customer: z.string(), phone: z.string() }),
+        run: () => {
+          throw new Error('boom')
+        }
+      },
+      options
+    )
+    await handler(trusted, { customer: 'Ali Traders', phone: '0300-1234567' })
+    expect(options.logged).toHaveLength(1)
+    const logged = JSON.stringify(options.logged, (_key, value: unknown) =>
+      value instanceof Error ? value.message : value
+    )
+    expect(logged).not.toMatch(/Ali|0300/)
   })
 
   it('treats a rejected promise and a thrown non-Error the same way', async () => {

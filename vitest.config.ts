@@ -15,16 +15,19 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      // Measured and enforced: the shared code (Phase 2 domain library, Result envelope, IPC contract) and
-      // the Phase 3A database/IPC foundation. Electron entry points (main/index, window, security, paths,
-      // preload/index) need the Electron app itself and are verified by launching it.
+      // Measured and enforced: the shared code (Phase 2 domain library, Result envelope, IPC contract), the
+      // Phase 3A database/IPC foundation and the Phase 4A data-safety engine (backups, restore, integrity,
+      // logging, settings). Electron entry points (main/index, window, security, paths, preload/index) need the
+      // Electron app itself and are verified by launching it.
       include: [
         'src/shared/**/*.ts',
         'src/main/app-info.ts',
         'src/main/data-paths.ts',
         'src/main/errors.ts',
+        'src/main/logging.ts',
         'src/main/db/**/*.ts',
         'src/main/ipc/**/*.ts',
+        'src/main/services/**/*.ts',
         'src/preload/api.ts',
         'src/renderer/src/lib/api.ts',
         'src/renderer/src/components/common/AboutCard.tsx'

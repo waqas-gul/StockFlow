@@ -1,3 +1,4 @@
+import type { z } from 'zod'
 import type { AppError } from '@shared/types/result'
 
 /**
@@ -12,4 +13,14 @@ export class AppFailure extends Error {
     this.name = 'AppFailure'
     this.error = error
   }
+}
+
+/** Zod issues as form field errors, keyed by input path (e.g. `lines.0.quantity`); whole-input issues go under `root`. */
+export function fieldErrorsOf(error: z.ZodError): Record<string, string[]> {
+  const fieldErrors: Record<string, string[]> = {}
+  for (const issue of error.issues) {
+    const key = issue.path.length === 0 ? 'root' : issue.path.map(String).join('.')
+    ;(fieldErrors[key] ??= []).push(issue.message)
+  }
+  return fieldErrors
 }

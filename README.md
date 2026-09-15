@@ -33,6 +33,11 @@ Development runs store their data in `%APPDATA%\StockFlow-dev`; installed builds
 The database is `data\shop.db` inside that folder. On first start the app creates it and applies the schema
 migrations in `src/main/db/migrations` (currently schema version 1, `0001_initial`).
 
+The same folder holds the technical log, `logs\app.log` (rotated at about 5 MB, with three older copies), and
+the verified backups in `backups\auto`, `backups\pre-migration` and `backups\pre-restore`. Before a migration
+changes a database that holds data, a verified backup is written to `backups\pre-migration`; if it fails, the
+migration does not run.
+
 ### Tests
 
 ```bash
