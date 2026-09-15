@@ -14,16 +14,19 @@ export { recordSchemaMigration, verifiedPreMigrationBackup } from './schema-upgr
  *
  * 1. A restore interrupted by a crash is rolled back, so an incomplete restore is never opened.
  * 2. The database is opened with verified connection pragmas and its StockFlow marker checked.
- * 3. Pending migrations run, after a verified pre-migration backup when the database holds anything.
- * 4. The recorded schema history (migration names and checksums) is compared with this app's migrations. A
- *    mismatch is logged as a warning and never changed: it does not stop the app, because the data itself passed
- *    the checks above; the maintenance integrity report shows it as an error.
- * 5. The backup folders are created (a failure is logged; backups report their own failures).
+ * 3. Every applied migration's recorded checksum must match this app's (upgradeSchema). A mismatch refuses normal
+ *    startup with SchemaChecksumMismatchError (SCHEMA_CHECKSUM_MISMATCH) before anything is backed up, migrated
+ *    or changed; each mismatch is logged with its version and both checksums.
+ * 4. Pending migrations run, after a verified pre-migration backup when the database holds anything; each must
+ *    pass PRAGMA foreign_key_check before it commits.
+ * 5. The rest of the recorded schema history (names, missing or extra rows) is compared with this app's
+ *    migrations. A difference there is logged as a warning and never changed; the integrity report shows it.
+ * 6. The backup folders are created (a failure is logged; backups report their own failures).
  *
  * On failure the connection is closed and the error thrown.
  */
 export async function initializeDatabase(ctx: DataSafetyContext): Promise<Db> {
-  recoverInterruptedRestore(ctx.paths.databaseFile, ctx.log)
+  recoverInterruptedRestore(ctx.paths, ctx.log)
   const db = openDatabase(ctx.paths.databaseFile)
   try {
     const migration = await upgradeSchema(db, ctx)

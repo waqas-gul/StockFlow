@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Db } from './adapter'
+import { openSqlite, type Db } from './adapter'
 import { openDatabase, readUserVersion } from './connection'
 import {
   MigrationError,
@@ -311,5 +311,98 @@ describe('migrate', () => {
     expect(error.code).toBe('INVALID_MIGRATIONS')
     expect(backup.calls).toEqual([])
     expect(tables(db)).toEqual([])
+  })
+})
+
+describe('migrate: PRAGMA foreign_key_check after each migration', () => {
+  // TEST-ONLY fixtures: a parent and a child table, then migrations that do or do not leave orphans behind.
+  const createFamilies: Migration = {
+    version: 1,
+    name: '0001_fixture_families',
+    checksum: 'sha256:fixture-families',
+    up: (db) =>
+      db.exec(`
+        CREATE TABLE fixture_parents (id INTEGER PRIMARY KEY) STRICT;
+        CREATE TABLE fixture_children (
+          id INTEGER PRIMARY KEY,
+          parent_id INTEGER NOT NULL REFERENCES fixture_parents (id)
+        ) STRICT;
+      `)
+  }
+  /** Defers the foreign key checks, then leaves an orphan: SQLite itself would only object at COMMIT. */
+  const leavesDeferredOrphan: Migration = {
+    version: 2,
+    name: '0002_fixture_deferred_orphan',
+    checksum: 'sha256:fixture-deferred-orphan',
+    up: (db) =>
+      db.exec(
+        'PRAGMA defer_foreign_keys = ON; INSERT INTO fixture_children (id, parent_id) VALUES (1, 999)'
+      )
+  }
+  const addsFamily: Migration = {
+    version: 2,
+    name: '0002_fixture_family',
+    checksum: 'sha256:fixture-family',
+    up: (db) =>
+      db.exec(
+        'INSERT INTO fixture_parents (id) VALUES (7); INSERT INTO fixture_children (id, parent_id) VALUES (1, 7)'
+      )
+  }
+  const createsLater: Migration = {
+    version: 3,
+    name: '0003_fixture_later',
+    checksum: 'sha256:fixture-later',
+    up: (db) => db.exec('CREATE TABLE fixture_later (id INTEGER PRIMARY KEY) STRICT')
+  }
+
+  it('rejects a migration that leaves foreign key violations: it is named, rolled back, and nothing after it runs', async () => {
+    const db = openApp()
+    db.exec('CREATE TABLE fixture_log (version INTEGER PRIMARY KEY) STRICT')
+    const error = await migrationError(
+      migrate(db, [createFamilies, leavesDeferredOrphan, createsLater], {
+        backupBeforeMigrating: recordingBackup().hook,
+        recordMigration: (target, migration) =>
+          target.run('INSERT INTO fixture_log (version) VALUES (?)', [migration.version])
+      })
+    )
+    expect(error).toMatchObject({ code: 'FOREIGN_KEY_CHECK_FAILED', version: 2 })
+    expect(error.message).toBe(
+      'Migration 0002_fixture_deferred_orphan (version 2) left 1 foreign key violation(s), the first in ' +
+        'table fixture_children; it was rolled back.'
+    )
+    expect(readUserVersion(db)).toBe(1)
+    expect(db.all('SELECT * FROM fixture_children')).toEqual([])
+    expect(db.all('SELECT version FROM fixture_log')).toEqual([{ version: 1 }])
+    expect(tables(db)).toEqual(['fixture_children', 'fixture_log', 'fixture_parents'])
+    expect(db.inTransaction).toBe(false)
+  })
+
+  it('catches violations on a connection that does not enforce foreign keys, where they would otherwise be committed', async () => {
+    const db = temp.track(openSqlite(temp.file('raw.db')))
+    db.exec('PRAGMA foreign_keys = OFF')
+    const leavesOrphan: Migration = {
+      ...leavesDeferredOrphan,
+      up: (target) => target.exec('INSERT INTO fixture_children (id, parent_id) VALUES (1, 999)')
+    }
+    const error = await migrationError(
+      migrate(db, [createFamilies, leavesOrphan], { backupBeforeMigrating: recordingBackup().hook })
+    )
+    expect(error).toMatchObject({ code: 'FOREIGN_KEY_CHECK_FAILED', version: 2 })
+    expect(readUserVersion(db)).toBe(1)
+    expect(db.all('SELECT * FROM fixture_children')).toEqual([])
+  })
+
+  it('accepts migrations that leave every reference valid', async () => {
+    const db = openApp()
+    await expect(
+      migrate(db, [createFamilies, addsFamily, createsLater], {
+        backupBeforeMigrating: recordingBackup().hook
+      })
+    ).resolves.toEqual({
+      fromVersion: 0,
+      toVersion: 3,
+      applied: ['0001_fixture_families', '0002_fixture_family', '0003_fixture_later']
+    })
+    expect(db.all('SELECT id, parent_id FROM fixture_children')).toEqual([{ id: 1, parent_id: 7 }])
   })
 })

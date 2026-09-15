@@ -24,6 +24,11 @@ export interface DataPaths {
   readonly logFile: string
   /** `<root>\backups`: one folder per backup category. */
   readonly backupsDir: string
+  /**
+   * `<root>\recovery`: damaged databases that a restore moved aside, kept exactly as they were. They are never
+   * verified backups, and are never listed, rotated or restored as backups.
+   */
+  readonly recoveryDir: string
 }
 
 export function resolveDataPaths(root: string): DataPaths {
@@ -35,7 +40,8 @@ export function resolveDataPaths(root: string): DataPaths {
     databaseFile: win32.join(dataDir, DATABASE_FILE_NAME),
     logsDir,
     logFile: win32.join(logsDir, 'app.log'),
-    backupsDir: win32.join(root, 'backups')
+    backupsDir: win32.join(root, 'backups'),
+    recoveryDir: win32.join(root, 'recovery')
   }
 }
 

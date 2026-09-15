@@ -8,7 +8,12 @@ import type { DataSafetyFaults } from './context'
 import { initializeDatabase } from './index'
 import type { Migration } from './migrate'
 import { migrations } from './migrations'
-import { upgradeSchema, verifiedPreMigrationBackup } from './schema-upgrade'
+import {
+  SchemaChecksumMismatchError,
+  appliedChecksumMismatches,
+  upgradeSchema,
+  verifiedPreMigrationBackup
+} from './schema-upgrade'
 import {
   TEST_TIME,
   createSchemaDatabase,
@@ -256,7 +261,7 @@ describe('upgradeSchema: a failed pre-migration backup means migration 2 never s
     )
   })
 
-  it('stops initializeDatabase too, leaving the database at schema 1', async () => {
+  it('stops initializeDatabase too, leaving the database at schema 1 (backup failure)', async () => {
     db.close()
     replaceFolderWithFile(preMigrationFolder())
     await expect(
@@ -265,5 +270,83 @@ describe('upgradeSchema: a failed pre-migration backup means migration 2 never s
     expect(migration2Ran).toBe(false)
     const check = temp.track(openDatabase(resolveDataPaths(temp.path).databaseFile))
     expect(readUserVersion(check)).toBe(1)
+  })
+})
+
+describe('upgradeSchema: applied migration checksums are verified before anything else', () => {
+  const OTHER = `sha256:${'e'.repeat(64)}`
+
+  it('refuses a database whose applied migration has another checksum: no backup, no migration, no change', async () => {
+    insertRow(db, 'companies', { name: 'Kept' })
+    const ctx = contextWith([{ ...migrations[0], checksum: OTHER }, migration2()])
+    const error = await upgradeSchema(db, ctx).then(
+      () => undefined,
+      (reason: unknown) => reason
+    )
+    expect(error).toBeInstanceOf(SchemaChecksumMismatchError)
+    expect(migration2Ran).toBe(false)
+    expect(readUserVersion(db)).toBe(1)
+    expect(preMigrationBackups()).toEqual([])
+    expect(db.all('SELECT version, checksum FROM schema_migrations')).toEqual([
+      { version: 1, checksum: migrations[0].checksum }
+    ])
+    expect(companies(db)).toEqual(['Kept'])
+  })
+
+  it('lists every applied migration whose checksum differs', async () => {
+    const later = migration2()
+    await upgradeSchema(db, contextWith([...migrations, later]))
+    expect(
+      appliedChecksumMismatches(db, [
+        { ...migrations[0], checksum: OTHER },
+        { ...later, checksum: OTHER }
+      ])
+    ).toEqual([
+      { version: 1, migration: '0001_initial', expected: OTHER, actual: migrations[0].checksum },
+      { version: 2, migration: '0002_fixture_later', expected: OTHER, actual: later.checksum }
+    ])
+  })
+
+  it('finds no mismatch when the checksums match, the history is absent, or a migration is unknown', async () => {
+    expect(appliedChecksumMismatches(db, migrations)).toEqual([])
+    const empty = temp.track(openDatabase(temp.file('empty\\shop.db')))
+    expect(appliedChecksumMismatches(empty, migrations)).toEqual([])
+    // Version 2 is recorded but this app knows only version 1: a newer schema, reported as such elsewhere.
+    await upgradeSchema(db, contextWith([...migrations, migration2()]))
+    expect(appliedChecksumMismatches(db, migrations)).toEqual([])
+  })
+})
+
+describe('upgradeSchema: a TEST-ONLY migration that breaks a reference is rejected', () => {
+  it('rolls migration 2 back when it leaves an orphan, keeps schema 1, and never runs migration 3', async () => {
+    insertRow(db, 'companies', { name: 'Before 0002' })
+    const orphan = fixtureMigration(
+      2,
+      '0002_fixture_orphan',
+      "PRAGMA defer_foreign_keys = ON; INSERT INTO product_units (product_id, name, base_qty, is_base) VALUES (999, 'Orphan', 1, 1)"
+    )
+    let migration3Ran = false
+    const later = fixtureMigration(
+      3,
+      '0003_fixture_after',
+      'CREATE TABLE fixture_after (id INTEGER PRIMARY KEY) STRICT',
+      () => {
+        migration3Ran = true
+      }
+    )
+    const error = await upgradeSchema(db, contextWith([...migrations, orphan, later])).then(
+      () => undefined,
+      (reason: unknown) => reason
+    )
+    expect(error).toMatchObject({ code: 'FOREIGN_KEY_CHECK_FAILED', version: 2 })
+    expect((error as Error).message).toContain('0002_fixture_orphan (version 2)')
+    expect((error as Error).message).toContain('product_units')
+    expect(migration3Ran).toBe(false)
+    expect(readUserVersion(db)).toBe(1)
+    expect(db.all("SELECT id FROM product_units WHERE name = 'Orphan'")).toEqual([])
+    expect(db.all('SELECT version FROM schema_migrations')).toEqual([{ version: 1 }])
+    expect(db.get("SELECT name FROM sqlite_schema WHERE name = 'fixture_after'")).toBeUndefined()
+    // The verified pre-migration backup was made first, and is kept.
+    expect(preMigrationBackups()).toEqual([BACKUP_S1])
   })
 })

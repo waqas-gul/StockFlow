@@ -1,8 +1,8 @@
 # StockFlow — Phase 4A Implementation Report
 
 > **Phase:** 4A — Data safety engine (backend and infrastructure only).
-> **Date:** 2026-09-14.
-> **Status:** Implemented and verified. **Awaiting approval.**
+> **Date:** 2026-09-14; final recovery hardening 2026-09-15 (§19).
+> **Status:** Implemented and verified, including the final recovery hardening. **Awaiting approval.**
 > - Verified backups, rotation, restore with rollback, the real pre-migration backup, the integrity-check engine, the settings backend and the persistent technical log.
 > - No IPC, preload or renderer changes: `window.api` still exposes only `app.info()`.
 > - Schema version is still **1**; `0001_initial.ts` is unchanged; there is no migration 0002.
@@ -18,13 +18,13 @@
 | Backups | SQLite online backup → `.tmp` → verified (self-contained, marker, schema, `integrity_check`, `foreign_key_check`) → renamed, never overwriting → optional JSON sidecar |
 | Rotation | Auto: newest of each of the last 14 backup days + first of each of the last 12 backup months. Pre-migration / pre-restore: last 5. Only after a verified backup; never the new one |
 | Pre-migration | The Phase 3A placeholder is replaced: a verified backup in `backups\pre-migration` before any migration of a database that holds anything; if it fails, nothing is migrated |
-| Restore | Validates a private copy, verified pre-restore backup, safe swap with WAL/SHM handling, reopen + migrate + final checks; any failure puts the previous database back; an interrupted restore is rolled back at the next start |
+| Restore | Validates a private copy, verified pre-restore backup, safe swap with WAL/SHM handling, reopen + migrate + final checks; any failure puts the previous database back; an interrupted restore is rolled back at the next start. A damaged or unopenable current database no longer blocks a restore: it is preserved unchanged in `recovery\`, never called a backup (§19) |
 | Integrity | 8 checks, each OK / WARNING / ERROR with human-readable findings; read-only |
 | Settings | Typed Zod backend for the 11 seeded keys; strict updates in one transaction |
-| Schema | Still **1**; `0001` checksum `sha256:0cc4eb98…0bee576cc4` unchanged; checked against `schema_migrations` at every start |
-| Tests | **923 / 923** in 37 files (**235 new**). Coverage 99.74 % statements, 99.25 % branches, 100 % functions |
+| Schema | Still **1**; `0001` checksum `sha256:0cc4eb98…0bee576cc4` unchanged. Every applied migration's recorded checksum is checked at every start, and a mismatch refuses startup (§19). Each migration must pass `foreign_key_check` before it commits (§19) |
+| Tests | **977 / 977** in 38 files: 235 new in Phase 4A, 54 more in the final hardening. Coverage 99.70 % statements, 99.34 % branches, 100 % functions |
 | Builds | typecheck, lint (0 problems), test, test:coverage, build, build:unpack all pass |
-| Packaged | **48 / 48** runtime checks against a temporary appData (fresh start, restart, damaged database) |
+| Packaged | **48 / 48** runtime checks against a temporary appData (fresh start, restart, damaged database), plus **20 / 20** for the hardening (regression, tampered checksum refused) |
 
 ---
 
@@ -61,7 +61,7 @@
 | `src/main/db/test-utils.ts` | Test-only fixtures: memory logger, test context, fixture migrations, fault helpers (hold a file open, violate a CHECK, corrupt an index, failing backup), `isBetween` |
 | Tests: `index`, `handle`, `ipc/index`, `data-paths`, `adapter`, `0001_initial` (one line), `0001_constraints` (one assertion) | Updated for the new APIs; see §13 for the two 0001 test lines |
 
-**Not changed:** `0001_initial.ts`, `migrate.ts` (the runner), `connection.ts`, `migrations/index.ts`, the preload, the renderer, the IPC contract, `package.json` (no new dependency), `electron-builder.yml`, ESLint config. `better-sqlite3` is still imported only by `src/main/db/adapter.ts`.
+**Not changed:** `0001_initial.ts`, `migrate.ts` (the runner; the final hardening later added its per-migration foreign-key check, §19.5), `connection.ts`, `migrations/index.ts`, the preload, the renderer, the IPC contract, `package.json` (no new dependency), `electron-builder.yml`, ESLint config. `better-sqlite3` is still imported only by `src/main/db/adapter.ts`.
 
 ---
 
@@ -178,7 +178,10 @@ Read-only; never fixes anything. Each check is `OK`, `WARNING` or `ERROR` with a
 
 The business checks are "not applicable" before schema 1. Document-level checks (invoice totals, one SALE per line, void reversals) belong to the phases that write those documents.
 
-**Schema checksum validation (§15):** at every start the recorded history is compared with the compiled migrations. **Chosen behaviour:** a mismatch is logged as a `WARNING` naming both checksums and is **never corrected**; the app still starts, because the database passed the open checks and its data is not in doubt. The integrity report shows it as an `ERROR`, so Phase 4B's maintenance screen surfaces it. Startup is blocked only where safety is uncertain (unreadable or foreign file, newer schema, failed pre-migration backup, interrupted restore that cannot be rolled back).
+**Schema checksum validation:** changed by the final hardening (§19.4).
+- An applied migration whose recorded checksum differs now **refuses normal startup** (`SCHEMA_CHECKSUM_MISMATCH`). It is never corrected.
+- Other differences in the history (a different recorded name, missing or extra rows) are still only logged as a `WARNING`, and the app starts.
+- The integrity report shows all of them as an `ERROR`, as before.
 
 ---
 
@@ -294,14 +297,313 @@ The real `%APPDATA%\StockFlow` and `StockFlow-dev` folders (data, logs, backups)
    - A 9-second Phase 4A dev launch at 14:01 created `logs\app.log` and the empty backup folders. That launch did not modify the database.
    - The production `%APPDATA%\StockFlow\data\shop.db` is still the untouched schema-0 file from 11 Sep.
    - Every automated run used temporary roots and left both real folders byte-for-byte unchanged.
-2. **A damaged database cannot be backed up.** A backup must pass `integrity_check` and `foreign_key_check`, so a live database with such damage blocks migrations and restores (and, in 4B, automatic backups) until it is repaired or restored. This is by design, and the integrity report shows the cause.
-3. **Schema checksum mismatch at startup:** logged as a warning and the app still starts; the integrity report shows it as an error (§10). Confirm this is the behaviour you want.
-4. **Rotation interpretation:** "last 14 daily / 12 monthly" counts days and months *that have backups* (newest of each day; first of each month), not calendar time, so a long break never deletes every backup. Backup names use local time; `createdAt` and the sidecar use UTC.
+2. **A damaged database cannot be backed up**, because a backup must pass `integrity_check` and `foreign_key_check`. It therefore still blocks migrations and, in 4B, automatic backups. It **no longer blocks a restore** (§19.2).
+3. **Schema checksum mismatch at startup:** changed as you asked. It now refuses normal startup (§19.4).
+4. **Rotation interpretation (confirmed by you, §19.6):** "last 14 daily / 12 monthly" counts days and months *that have backups* (newest of each day; first of each month), not calendar time, so a long break never deletes every backup. Backup names use local time; `createdAt` and the sidecar use UTC.
 5. **Restore detail:**
    - Only the main file of a candidate is copied. StockFlow's own backups are always self-contained; a foreign raw copy with a separate `-wal` would lose its uncheckpointed WAL data.
    - Detecting a reader waits up to the 5-second busy timeout.
 6. **`invoice.startNumber` is only stored.** Applying it to the invoice sequence (e.g. only before the first invoice) is Phase 4B/8 business logic. `invoice.paperSize` allows A4/A5 until decision E1; thermal would be a new value, with no migration.
 7. **Test-only fault hooks** (`DataSafetyContext.faults`) exist on the backup and restore paths; the app never sets them.
-8. **Not added:** a `foreign_key_check` inside each migration's transaction (plan §21). The runner is unchanged, as instructed; worth adding when 0002 is written. Unhandled promise rejections are not logged separately; uncaught exceptions are.
+8. **Per-migration `foreign_key_check`:** added in the final hardening (§19.5). Unhandled promise rejections are still not logged separately; uncaught exceptions are.
 9. **Log redaction** covers the appData and profile folders. Other absolute paths (e.g. a USB backup folder chosen in 4B) would appear as they are.
 10. **Internal API change:** `HandlerOptions.logError` became `log` (`warn`/`error`); `initializeDatabase` now takes the data-safety context instead of a file path.
+
+---
+
+## 19. Final recovery hardening (2026-09-15)
+
+Requested after the Phase 4A review. The scope is still backend only:
+- no UI, IPC, preload or renderer change;
+- no migration 0002;
+- schema 1 and `0001_initial` are unchanged.
+
+### 19.1 Summary
+
+| Change | Result |
+|---|---|
+| Restore over a damaged database | A validated backup can now be restored even when the current database cannot be opened, fails `integrity_check` or `foreign_key_check`, or cannot be verified. The damaged database is preserved unchanged in `<data-root>\recovery\`. It is never called a backup |
+| Checksum mismatch | An applied migration whose recorded checksum differs refuses normal startup (`SCHEMA_CHECKSUM_MISMATCH`). Nothing is changed, and the version and both checksums are logged with the reference |
+| Foreign keys in migrations | `PRAGMA foreign_key_check` runs inside every migration's transaction, before COMMIT. A violation rolls that migration back, and no later migration runs |
+| Retention | The interpretation is confirmed; the code is unchanged (§19.6) |
+| Tests | **977 / 977** (54 new). Coverage 99.70 % statements, 99.34 % branches, 100 % functions, 99.67 % lines |
+| Packaged | **20 / 20** checks against a temporary appData (§19.8) |
+
+### 19.2 Damaged live database: restore behaviour
+
+**Step 1, always first: validate the candidate.** A private copy of the chosen file must pass:
+- SQLite validity;
+- StockFlow `application_id`;
+- a schema version this app supports;
+- `integrity_check`;
+- `foreign_key_check`;
+- and now its recorded migration checksums (§19.4).
+
+If validation fails, the restore stops. The current database is not opened, closed, moved or backed up.
+
+**Step 2: the current database decides the path.** It is checked exactly as a verified backup requires:
+
+| Current database | Path | `reason` | How the old data is kept |
+|---|---|---|---|
+| Opens; `user_version` ≥ 0; `integrity_check` = ok; `foreign_key_check` empty | **HEALTHY** | — | Verified pre-restore backup: the Phase 4A path, unchanged |
+| No `shop.db` at all | **DAMAGED** | `MISSING` | Nothing to preserve |
+| StockFlow cannot open it (not a database, not StockFlow's) | **DAMAGED** | `CANNOT_OPEN` | Recovery artifact |
+| Invalid (negative) schema version | **DAMAGED** | `INVALID_SCHEMA_VERSION` | Recovery artifact |
+| `integrity_check` reports problems, or the damage makes it throw | **DAMAGED** | `INTEGRITY_CHECK_FAILED` | Recovery artifact |
+| `foreign_key_check` finds orphans | **DAMAGED** | `FOREIGN_KEY_CHECK_FAILED` | Recovery artifact |
+| A check cannot run, or no private copy can be made for the checks | **DAMAGED** | `UNVERIFIABLE` | Recovery artifact |
+
+- **A healthy database is never replaced without a verified backup.** If its backup fails for any other reason, for example a backup folder that cannot be written, the restore is refused as before (`PRE_RESTORE_BACKUP_FAILED`). Only a database that fails the checks takes the damaged path.
+- **Restoring without an open connection** (`restoreDatabase(null, …)`): Phase 4B may offer a restore while normal startup is refused. In that case the checks run on a **private copy** (`shop.db.restore-check*`), and the original files are only read.
+  - **Why:** an early test run of this work showed that SQLite damages what it should preserve. Opening an unreadable `shop.db` with a stale `-wal`/`-shm` and closing it again *deleted* those two files.
+  - A healthy copy means the file is then opened normally, and the healthy path follows.
+
+**The damaged path, in order:**
+1. The candidate has already been validated (step 1).
+2. A marker, `shop.db.restore-pending`, is written. It names the recovery file.
+3. The open connection, if there is one, is closed cleanly.
+4. `shop.db` and whichever of its `-wal`, `-shm` and `-journal` exist are **renamed** into `<data-root>\recovery\damaged-live-db_<YYYY-MM-DD>_<HHMMSS>.db…`.
+   - The companion files go first and the database file last.
+   - No existing file is ever replaced.
+   - The marker then records that every file was moved (`preserved: true`).
+5. The validated copy is installed by rename, then reopened with every verified connection pragma, `recursive_triggers` included.
+6. If it is older, it is migrated, with its own verified pre-migration backup of the restored data.
+7. **Final checks:** StockFlow `application_id`, this app's schema version, `integrity_check` and `foreign_key_check`. The same final check now also runs in the healthy path.
+8. The marker is removed. The outcome has:
+   - `path: 'DAMAGED'`
+   - `preRestoreBackup: null`
+   - `recoveryArtifact: { fileName, files, preservedAt, reason, verified: false }`
+9. **On any failure after step 4:**
+   - The restored connection is closed, and whatever the restore installed is removed.
+   - The marker is updated, then the preserved files are renamed back, byte-identical.
+   - The outcome has `previousReinstated: true` and `db: null`. The damaged database is put back as it was, but it is not reopened.
+   - If even that fails (for example, another program holds the installed file), the error is `ROLLBACK_FAILED`. The files stay in `recovery\` and the marker stays, and the next start puts them back (`recoverInterruptedRestore`).
+
+The damaged database is never deleted, never rewritten, and never copied with SQLite's online backup.
+
+### 19.3 Recovery (quarantine) artifact
+
+- **Location:** `<data-root>\recovery\` (`DataPaths.recoveryDir`). It is separate from `backups\`, and is created only when a damaged database is preserved, never at startup.
+- **Name:** `damaged-live-db_2026-09-14_143500.db`, plus `.db-wal`, `.db-shm` and `.db-journal` when they existed.
+  - The time is local, like backup names.
+  - A second artifact in the same second gets `_2`, and so on.
+  - One base name keeps the set together, so a specialist can open it as SQLite would.
+- **Rename, not copy.** The files are byte-exact, need no extra disk space, and SQLite never reads or rewrites them.
+- **Never a verified backup:**
+  - it is not in a backup folder;
+  - it does not have a backup name (`parseBackupFileName` rejects it, so no backup listing or rotation can include it);
+  - it has no sidecar;
+  - the outcome reports `verified: false` and `preRestoreBackup: null`;
+  - validation refuses it as a restore candidate, because it is damaged.
+- **Never deleted by StockFlow,** and never rotated.
+- **Crash safety:**
+  - The marker records the artifact's name and `preserved`.
+  - While `preserved` is `false`, nothing has been installed yet, so only the files already in `recovery\` are moved back.
+  - Putting files back always removes what the restore installed *first*. It then sets `preserved: false`, and only then moves the files back. So an interruption can never delete a file that was already put back.
+  - A marker that names anything other than a recovery file name, for example `..\data\shop.db`, is ignored.
+- **Log:** file names only, never paths or data.
+  - `WARN [restore] the current database cannot have a verified backup: its files are preserved in the recovery folder instead reason=…`
+  - `INFO [restore] the damaged database was moved to the recovery folder; it is not a verified backup file=… files=…`
+
+### 19.4 Schema checksum mismatch: startup policy
+
+- **Where:** in `upgradeSchema`, which serves both startup and restore.
+  - It runs **after** the migration list and schema-version checks, so an invalid, unknown or newer schema keeps its own typed error: `INVALID_MIGRATIONS`, `UNKNOWN_SCHEMA_VERSION` or `DATABASE_TOO_NEW`.
+  - It runs **before** the pre-migration backup and before any migration.
+- **What:** every row of `schema_migrations` whose version has a compiled migration. Its recorded checksum must equal the checksum pinned in the app.
+- **On a mismatch:**
+  - nothing is written;
+  - `SchemaChecksumMismatchError` is thrown, with code `SCHEMA_CHECKSUM_MISMATCH` and a `mismatches[]` list of `{ version, migration, expected, actual }`;
+  - the connection is closed;
+  - the startup dialog shows the safe message and a reference, and the app exits with code 1.
+- **The message the user sees:**
+
+  > StockFlow detected a database schema verification problem.
+  > Your data has not been changed.
+  > Restore a verified backup or contact support.
+
+- **Log:** one `ERROR` per mismatch, with the migration version, the expected and the actual checksum. Then the startup `ERROR` with the reference, the error, `code: SCHEMA_CHECKSUM_MISMATCH`, and the same detail as its cause. The packaged app wrote this (stack lines shortened):
+
+  ```text
+  … ERROR [schema] applied migration checksum mismatch: the database is refused and left unchanged version=1 migration=0001_initial expected=sha256:0cc4eb98…0bee576cc4 actual=sha256:eeee…eeee
+  … ERROR [startup] the database could not be opened ref=59F71D
+    SchemaChecksumMismatchError: StockFlow detected a database schema verification problem.
+    Your data has not been changed.
+    Restore a verified backup or contact support.
+        at upgradeSchema (…)
+    code: SCHEMA_CHECKSUM_MISMATCH
+    Caused by: Error: Migration 1 (0001_initial) is recorded with checksum sha256:eeee…eeee, but this version of StockFlow expects sha256:0cc4eb98…0bee576cc4.
+  ```
+
+- **Still only a warning, and the app starts:** a different recorded migration name, or missing or extra history rows. The integrity report is unchanged: any history difference is an `ERROR` there.
+- **Restore candidates:** validation now also refuses a backup whose recorded checksums differ (`SCHEMA_CHECKSUM_MISMATCH`: "The schema of this backup could not be verified by this version of StockFlow, so it cannot be restored. Choose another backup or contact support."). Restoring it would only produce a database that the next start refuses.
+- **A database refused at startup can itself be restored over.** With no connection it is checked through a copy. It is healthy, so it gets the normal verified pre-restore backup, with its altered history kept unchanged. This is tested.
+
+### 19.5 Foreign-key verification after each migration
+
+- **Sequence:** each migration runs in its own `BEGIN IMMEDIATE` transaction:
+  1. `user_version` is set;
+  2. `up()` runs;
+  3. the `schema_migrations` row is recorded;
+  4. `PRAGMA foreign_key_check` must return no rows;
+  5. COMMIT.
+- **On a violation:** the transaction is rolled back, and `MigrationError` `FOREIGN_KEY_CHECK_FAILED` is thrown with the migration's `version`. Example message: "Migration 0002_fixture_orphan (version 2) left 1 foreign key violation(s), the first in table product_units; it was rolled back." No later migration runs.
+- **Why inside the transaction:** `foreign_key_check` only reads, and it sees the transaction's uncommitted changes. Checking before COMMIT lets the runner roll the migration back, so a bad migration can never be committed.
+- **It does not depend on foreign keys being enforced.** Two cases in TEST-ONLY migrations show it:
+  - A migration that defers the checks (`PRAGMA defer_foreign_keys`) would otherwise fail only at COMMIT, as a generic `MIGRATION_FAILED`.
+  - On a connection without enforcement, the orphan would otherwise be committed silently.
+- **Proven with TEST-ONLY migrations:**
+  - Generic runner (3 tests): rejected and named; recorded row rolled back; later migration not run; clean migrations still accepted.
+  - StockFlow path (1 test): schema 1 → fixture 2, which leaves an orphan `product_units` row.
+    - Rolled back, and the database stays at schema 1.
+    - Migration 3 never ran.
+    - The verified pre-migration backup is kept.
+- **For future migrations:** SQLite's table-rebuild procedure turns foreign keys off, and that pragma cannot take effect inside the runner's transaction. If a future 0002 ever needs a rebuild, the runner would need an explicit mode for it; this check is then the verification step SQLite documents for that procedure.
+
+### 19.6 Retention policy (confirmed, unchanged)
+
+- **14 daily:** the newest verified automatic backup of each of the 14 most recent **distinct days that have a verified automatic backup**.
+- **12 monthly:** one retained backup (the first) of each of the 12 most recent **distinct months that have a verified backup**.
+- **Pre-migration and pre-restore:** the last 5 each.
+- **A long period without use never makes useful old backups disappear.** Rotation counts days and months that have backups, not calendar time. It runs only after a new verified backup, and never deletes that backup.
+- The recovery folder is not rotated at all.
+
+### 19.7 Files
+
+- **Created:**
+  - `src/main/db/quarantine.ts` (82 lines): recovery names, the preserving move, the move back.
+  - `src/main/db/quarantine.test.ts` (150 lines).
+- **Changed (11 tracked files, 1,562 insertions, 101 deletions before this report update):**
+
+  | File | Change |
+  |---|---|
+  | `restore.ts` | Two paths, private-copy checks, candidate checksum validation, damaged-path marker and recovery |
+  | `schema-upgrade.ts` | Checksum gate, `SchemaChecksumMismatchError` |
+  | `migrate.ts` | Per-migration `foreign_key_check` |
+  | `db/index.ts` | Startup documentation; recovery call |
+  | `data-paths.ts` | `recoveryDir` |
+  | `README.md` | Recovery folder and checksum rule |
+  | Tests | `restore`, `index`, `migrate`, `schema-upgrade`, `data-paths` |
+
+- **Not changed:**
+  - `0001_initial.ts` and `migrations/index.ts`;
+  - `connection.ts`, `verify.ts` (backup verification), `backup.ts`, `backup-files.ts` (names), `rotation.ts` (retention);
+  - `logging.ts`, `settings.service.ts`, `main/index.ts`;
+  - the preload, the renderer and the IPC contract;
+  - `package.json`, `electron-builder.yml`.
+- **Internal API changes:**
+  - `restoreDatabase(live: Db | null, …)`.
+  - The outcome gains `path` and `recoveryArtifact`. `preRestoreBackup` is `null` on the DAMAGED path.
+  - `recoverInterruptedRestore(paths, log)` (was `(databaseFile, log)`).
+  - New `RestoreError` codes `PRESERVATION_FAILED` and `SCHEMA_CHECKSUM_MISMATCH`, and a new stage `PRESERVATION`.
+  - New `MigrationError` code `FOREIGN_KEY_CHECK_FAILED`.
+
+### 19.8 Tests and results
+
+**54 new tests.**
+
+| File | New tests | What they prove |
+|---|---|---|
+| `restore.test.ts` | 33 | The damaged path, preservation, put-back, startup recovery, candidate checksum, restoring with no connection |
+| `quarantine.test.ts` | 10 | Names never collide and are never backup names; byte-exact moves; nothing is ever replaced |
+| `index.test.ts` | 4 (1 rewritten) | Mismatch refuses startup and changes nothing; safe message; name-only difference and missing record stay warnings; a newer schema keeps `DATABASE_TOO_NEW` |
+| `schema-upgrade.test.ts` | 4 | Gate before backup and migrations; every mismatch listed; unknown or absent history is not a mismatch; the orphan migration is rolled back |
+| `migrate.test.ts` | 3 | Per-migration `foreign_key_check` (§19.5) |
+
+**The requested tests:**
+1. **Corrupt live database + valid backup: the restore succeeds.** Covered cases:
+   - a CHECK violation (integrity);
+   - a corrupted index page;
+   - a foreign-key orphan;
+   - an invalid schema version;
+   - checks that cannot run;
+   - a private copy that cannot be made;
+   - an unopenable file with a stale WAL and SHM;
+   - no file at all.
+2. **Corrupt live database + invalid candidate: rejected before the live files are touched.**
+   - Covered candidates: not a database, a damaged backup, a newer schema, a mismatched checksum. Each is also tested with no open connection.
+   - Afterwards: the file hash is unchanged, the connection is still open, and there is no recovery folder, no marker and no pre-restore backup.
+3. **The damaged database is preserved in `recovery\`.** The hashes are identical, the `-wal`/`-shm` are included, and the old data can still be read.
+4. **The installed database passes** `integrity_check`, `foreign_key_check`, `application_id` and the supported schema version, plus every connection pragma. The final check also enforces each of them. A restored database with `user_version` 7, `application_id` 0, a CHECK violation or an orphan is refused.
+5. **Failure after the candidate replaced the live database: the previous files stay recoverable.**
+   - Failures at REPLACE, REOPEN, MIGRATION and four VERIFICATION variants: the files are put back byte-identical.
+   - When they cannot be put back: `ROLLBACK_FAILED`, the files stay in `recovery\`, and the next start puts them back.
+   - Startup recovery is tested:
+     - after an install;
+     - partway through preserving;
+     - before anything was preserved;
+     - while the installed file is locked;
+     - with a hostile marker and with an unreadable marker;
+     - through `initializeDatabase`.
+6. **The recovery artifact is never reported as a verified backup:**
+   - `preRestoreBackup: null` and `verified: false`;
+   - all backup folders are empty;
+   - it does not have a backup name, and there is no sidecar;
+   - no "verified backup created" log entry;
+   - it is refused as a restore candidate.
+
+**Regression:**
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | ✅ |
+| `npm run lint` | ✅ 0 problems |
+| `npm test` | ✅ **977 / 977** in 38 files |
+| `npm run test:coverage` | ✅ 99.70 % statements, 99.34 % branches, 100 % functions, 99.67 % lines |
+| `npm run build` | ✅ main 76.08 kB; preload 1.04 kB and renderer unchanged |
+| `npm run build:unpack` | ✅ `dist\win-unpacked\StockFlow.exe` |
+
+- **Test changes:** every Phase 4A test still passes except one. The test that asserted the old checksum behaviour (a warning, and the app starts) was rewritten for the new policy, as requested. Two restore tests were adapted to the new outcome type, and two call sites to the new `recoverInterruptedRestore` signature.
+- **Coverage:**
+  - `quarantine.ts`, `schema-upgrade.ts`, `migrate.ts` and `data-paths.ts` are at 100 %. The Phase 2 domain library is still at 100 %.
+  - `restore.ts` is at 99.28 % statements and 98.76 % branches. Line 411 is the Phase 4A guard for the WAL still holding data after the close. Line 746 is a new defensive branch: a read-only open that fails right after the copy was verified.
+
+**Packaged (20 / 20).** The unpacked packaged app ran against a temporary appData, redirected through the inspector.
+
+- **A. Fresh start:**
+  - The only IPC channel is `app:info`.
+  - `window.api` is still only `app.info`, with no `window.electron`, `require` or `process` in the renderer.
+  - `app.info()` reports schema 1.
+  - The app exits cleanly (exit 0).
+  - The log records the 0 → 1 migration, "database ready" and "schema history verified".
+  - No recovery folder is created at startup.
+  - 0001 is recorded with the pinned checksum.
+- **D. Tampered checksum:** the recorded 0001 checksum was changed outside StockFlow.
+  - Startup is refused with exit code 1.
+  - The log has the mismatch entry (version, expected, actual) and `ref=59F71D` with the error, its code and its cause.
+  - The dialog, stubbed by the harness, showed the safe message and the same reference, without checksums or paths.
+  - No "database ready" entry.
+  - The database file is byte-identical, and the tampered checksum is still recorded as it was.
+  - Nothing was backed up, migrated or preserved.
+  - No user path or business data in the log.
+- **Real folders:** `%APPDATA%\StockFlow` and `StockFlow-dev` (data, logs, backups, recovery) were fingerprinted before and after the runs and are **unchanged**. The temporary root was removed.
+
+### 19.9 Confirmation
+
+- **Schema version remains 1.** `src/main/db/migrations` holds only `0001_initial` (with its tests) and `index.ts`; **there is no migration 0002**.
+- **The 0001 checksum is unchanged:** `sha256:0cc4eb9837b99f71442ed9e8bbd48723f869bcbc8fb2f4d8b0dcd90bee576cc4`.
+  - `git diff` of `0001_initial.ts` and `migrations/index.ts` is empty.
+  - The pinned-checksum tests pass.
+  - A new packaged database records exactly this checksum.
+- **Unchanged:**
+  - backup verification requirements;
+  - the healthy-database pre-restore backup;
+  - backup file names;
+  - log rotation;
+  - the settings backend;
+  - Phase 0 security, the Phase 1 UI and the Phase 2 domain logic;
+  - better-sqlite3 12.11.1.
+- **No UI or IPC was added.** `window.api` is still only `app.info()`.
+- **No Phase 4B work was started.**
+- **Nothing was committed by me.** HEAD is your commit `7b10fea` (15 Sep, 13:03), and this hardening is uncommitted in the working tree.
+
+### 19.10 Needs attention
+
+1. **A healthy database with an unwritable backup folder is still refused** (`PRE_RESTORE_BACKUP_FAILED`), by design: a healthy database is never replaced without a verified backup. Only failed checks lead to the damaged path.
+2. **With an open connection, the damaged path first closes it cleanly.** SQLite's normal close writes the committed WAL content into the damaged main file, so the preserved `.db` is the closed state: committed data is kept, not lost. With no connection (startup refused), the files are preserved exactly as found, including a stale WAL and SHM.
+3. **After a failed restore over a damaged database, the outcome has `db: null`.** The damaged database is back as it was, but it is not reopened. Phase 4B must relaunch, or stay on its blocked screen.
+4. **StockFlow never cleans `recovery\`.** Artifacts stay until a person deletes them. Phase 4B could list them.
+5. **The checksum gate compares the recorded history, not the live schema objects.** A tool that changes the schema without touching `schema_migrations` is not detected at startup. The packaged test had to drop the append-only trigger to alter the history.
+6. **Two additions beyond the letter of the request:**
+   - Restore candidates with mismatching recorded checksums are refused at validation, so a restore can never install a database that the next start would refuse.
+   - The final check of a restore now also asserts `application_id` and this app's schema version, in both paths.

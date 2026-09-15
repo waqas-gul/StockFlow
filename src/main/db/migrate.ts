@@ -1,5 +1,6 @@
 import type { Db } from './adapter'
 import { readUserVersion } from './connection'
+import { foreignKeyViolations, type ForeignKeyViolation } from './verify'
 
 /** One forward-only schema change. A migration is never edited once it has shipped. */
 export interface Migration {
@@ -51,10 +52,11 @@ export type MigrationErrorCode =
   | 'DATABASE_TOO_NEW'
   | 'BACKUP_FAILED'
   | 'MIGRATION_FAILED'
+  | 'FOREIGN_KEY_CHECK_FAILED'
 
 export class MigrationError extends Error {
   readonly code: MigrationErrorCode
-  /** The version of the migration that failed (MIGRATION_FAILED only). */
+  /** The version of the migration that failed (MIGRATION_FAILED and FOREIGN_KEY_CHECK_FAILED). */
   readonly version?: number
 
   constructor(
@@ -116,6 +118,11 @@ export function planMigrations(db: Db, migrations: readonly Migration[]): Migrat
  * backup runs first, then each pending migration runs in its own BEGIN IMMEDIATE transaction that also sets
  * `user_version` (and records the migration): a migration applies completely or not at all.
  *
+ * Before that transaction commits, PRAGMA foreign_key_check must find no violation. It runs inside the
+ * transaction (it sees the migration's uncommitted changes), so a migration that leaves a broken reference is
+ * rolled back and reported as FOREIGN_KEY_CHECK_FAILED with its version, and no later migration runs. The check
+ * does not depend on the connection enforcing foreign keys, or on SQLite's own check of deferred ones at COMMIT.
+ *
  * Call it before any IPC request is served, so nothing else uses the connection meanwhile.
  */
 export async function migrate(
@@ -140,15 +147,26 @@ export async function migrate(
 
   const applied: string[] = []
   for (const migration of plan.pending) {
+    let violations: readonly ForeignKeyViolation[] = []
     try {
       db.transaction(() => {
         db.exec(`PRAGMA user_version = ${migration.version}`)
         // Returned so the transaction refuses (and rolls back) an async migration.
         const outcome = migration.up(db)
         options.recordMigration?.(db, migration)
+        violations = foreignKeyViolations(db)
+        if (violations.length > 0) throw new Error('PRAGMA foreign_key_check found violations.')
         return outcome
       })
     } catch (error) {
+      if (violations.length > 0) {
+        throw new MigrationError(
+          'FOREIGN_KEY_CHECK_FAILED',
+          `Migration ${migration.name} (version ${migration.version}) left ${violations.length} foreign key ` +
+            `violation(s), the first in table ${violations[0].table}; it was rolled back.`,
+          { version: migration.version }
+        )
+      }
       throw new MigrationError(
         'MIGRATION_FAILED',
         `Migration ${migration.name} failed and was rolled back: ${messageOf(error)}`,

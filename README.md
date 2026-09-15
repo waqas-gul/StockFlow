@@ -38,6 +38,11 @@ the verified backups in `backups\auto`, `backups\pre-migration` and `backups\pre
 changes a database that holds data, a verified backup is written to `backups\pre-migration`; if it fails, the
 migration does not run.
 
+When a backup is restored over a damaged database (one that fails its checks, so it cannot have a verified backup),
+the damaged database is moved unchanged to `recovery\damaged-live-db_<date>_<time>.db`, with its `-wal` and `-shm`
+files. These files are not backups: they are kept only in case a specialist needs them. StockFlow also refuses to
+start with a database whose recorded migration checksums differ from its own, and changes nothing in it.
+
 ### Tests
 
 ```bash

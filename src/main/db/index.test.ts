@@ -15,10 +15,13 @@ import { initializeDatabase, recordSchemaMigration } from './index'
 import { validateMigrations, type Migration } from './migrate'
 import { migrations } from './migrations'
 import { initialMigration } from './migrations/0001_initial'
+import { SCHEMA_VERIFICATION_MESSAGE, SchemaChecksumMismatchError } from './schema-upgrade'
 import {
   TEST_APP_VERSION,
   TEST_TIME,
   createTempDir,
+  editDatabaseFile,
+  fileHash,
   isBetween,
   sqlChecksum,
   testContext,
@@ -168,19 +171,105 @@ describe('initializeDatabase', () => {
     expect(ctx.log.entries[2].context).toEqual({ schema: 1, migrated: 1 })
   })
 
-  it('logs a schema checksum mismatch without changing anything, and still opens the database', async () => {
+  it('refuses normal startup when an applied migration has a different checksum, and changes nothing', async () => {
     temp.track(await initializeDatabase(ctx)).close()
+    const before = fileHash(ctx.paths.databaseFile)
     const changed: Migration[] = [{ ...initialMigration, checksum: OTHER_CHECKSUM }]
     const reopen = testContext(temp, { migrations: changed })
-    const db = temp.track(await initializeDatabase(reopen))
-    expect(db.isOpen).toBe(true)
+
+    const error = await initializeDatabase(reopen).then(
+      () => undefined,
+      (reason: unknown) => reason
+    )
+
+    expect(error).toBeInstanceOf(SchemaChecksumMismatchError)
+    expect(error).toMatchObject({
+      code: 'SCHEMA_CHECKSUM_MISMATCH',
+      message: SCHEMA_VERIFICATION_MESSAGE,
+      mismatches: [
+        {
+          version: 1,
+          migration: '0001_initial',
+          expected: OTHER_CHECKSUM,
+          actual: initialMigration.checksum
+        }
+      ]
+    })
     expect(reopen.log.entries).toContainEqual({
+      level: 'ERROR',
+      message:
+        '[schema] applied migration checksum mismatch: the database is refused and left unchanged',
+      context: {
+        version: 1,
+        migration: '0001_initial',
+        expected: OTHER_CHECKSUM,
+        actual: initialMigration.checksum
+      }
+    })
+    expect(messages(reopen)).not.toContain('INFO [startup] database ready')
+    // The file was released and not changed: the recorded checksum is never "corrected".
+    expect(fileHash(ctx.paths.databaseFile)).toBe(before)
+    const check = temp.track(openSqlite(ctx.paths.databaseFile, { readonly: true }))
+    expect(schemaMigrations(check).map((row) => row.checksum)).toEqual([initialMigration.checksum])
+  })
+
+  it('shows the user a safe message and puts the technical detail in the cause', () => {
+    const error = new SchemaChecksumMismatchError([
+      { version: 1, migration: '0001_initial', expected: OTHER_CHECKSUM, actual: 'sha256:recorded' }
+    ])
+    expect(error.message).toBe(
+      'StockFlow detected a database schema verification problem.\nYour data has not been changed.\n' +
+        'Restore a verified backup or contact support.'
+    )
+    expect(error.message).not.toContain('sha256')
+    expect((error.cause as Error).message).toBe(
+      `Migration 1 (0001_initial) is recorded with checksum sha256:recorded, but this version of StockFlow ` +
+        `expects ${OTHER_CHECKSUM}.`
+    )
+  })
+
+  it('still opens the database when only the recorded name differs: a warning, not a refusal', async () => {
+    temp.track(await initializeDatabase(ctx)).close()
+    const renamed = testContext(temp, {
+      migrations: [{ ...initialMigration, name: '0001_renamed' }]
+    })
+    const db = temp.track(await initializeDatabase(renamed))
+    expect(db.isOpen).toBe(true)
+    expect(renamed.log.entries).toContainEqual({
       level: 'WARN',
       message:
         '[startup] the recorded schema history does not match this version of StockFlow; it is reported, not changed',
-      context: { issues: 1, detail: expect.stringContaining(OTHER_CHECKSUM) }
+      context: { issues: 1, detail: expect.stringContaining('0001_renamed') }
     })
-    expect(schemaMigrations(db).map((row) => row.checksum)).toEqual([initialMigration.checksum])
+  })
+
+  it('still opens a database whose migration record is missing: a warning, not a refusal', async () => {
+    temp.track(await initializeDatabase(ctx)).close()
+    editDatabaseFile(
+      ctx.paths.databaseFile,
+      'DROP TRIGGER trg_schema_migrations_no_delete; DELETE FROM schema_migrations'
+    )
+    const reopen = testContext(temp)
+    const db = temp.track(await initializeDatabase(reopen))
+    expect(db.isOpen).toBe(true)
+    expect(reopen.log.entries).toContainEqual(
+      expect.objectContaining({
+        level: 'WARN',
+        context: {
+          issues: 1,
+          detail: 'schema_migrations records versions none, but the schema version is 1.'
+        }
+      })
+    )
+  })
+
+  it('still reports a newer database as DATABASE_TOO_NEW when a checksum differs as well', async () => {
+    temp.track(await initializeDatabase(ctx)).close()
+    editDatabaseFile(ctx.paths.databaseFile, `PRAGMA user_version = ${migrations.length + 1}`)
+    const changed = testContext(temp, {
+      migrations: [{ ...initialMigration, checksum: OTHER_CHECKSUM }]
+    })
+    await expect(initializeDatabase(changed)).rejects.toMatchObject({ code: 'DATABASE_TOO_NEW' })
   })
 
   it('still opens the database when the backup folders cannot be created, and logs it', async () => {

@@ -11,7 +11,7 @@ import {
 const appData = 'C:\\Users\\owner\\AppData\\Roaming'
 
 describe('resolveDataPaths', () => {
-  it('puts the database at <data-root>\\data\\shop.db, the log in logs\\ and the backups in backups\\', () => {
+  it('puts the database at <data-root>\\data\\shop.db, the log in logs\\, the backups in backups\\ and preserved damaged databases in recovery\\', () => {
     const root = `${appData}\\StockFlow`
     expect(DATABASE_FILE_NAME).toBe('shop.db')
     expect(resolveDataPaths(root)).toEqual({
@@ -20,7 +20,8 @@ describe('resolveDataPaths', () => {
       databaseFile: `${root}\\data\\shop.db`,
       logsDir: `${root}\\logs`,
       logFile: `${root}\\logs\\app.log`,
-      backupsDir: `${root}\\backups`
+      backupsDir: `${root}\\backups`,
+      recoveryDir: `${root}\\recovery`
     })
   })
 
