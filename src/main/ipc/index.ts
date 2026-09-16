@@ -2,6 +2,22 @@ import { z } from 'zod'
 import type { IpcChannel } from '@shared/ipc-contract'
 import { CompanyCreateSchema, CompanyUpdateSchema } from '@shared/companies'
 import {
+  BalanceAdjustmentInputSchema,
+  CustomerCreateSchema,
+  CustomerIdSchema,
+  CustomerLedgerInputSchema,
+  CustomerListInputSchema,
+  CustomerSearchInputSchema,
+  CustomerUpdateSchema
+} from '@shared/customers'
+import {
+  PaymentCreateSchema,
+  PaymentDuplicateCheckSchema,
+  PaymentIdSchema,
+  PaymentListInputSchema,
+  PaymentVoidInputSchema
+} from '@shared/payments'
+import {
   ProductCreateSchema,
   ProductIdSchema,
   ProductListInputSchema,
@@ -30,8 +46,25 @@ import {
   setCompanyActive,
   updateCompany
 } from '../services/companies.service'
+import {
+  adjustCustomerBalance,
+  createCustomer,
+  customerLedger,
+  getCustomer,
+  listCustomers,
+  searchCustomers,
+  setCustomerActive,
+  updateCustomer
+} from '../services/customers.service'
 import type { LiveDatabase } from '../services/live-database'
 import { integrityCheckReport } from '../services/maintenance.service'
+import {
+  checkDuplicatePayment,
+  createPayment,
+  getPayment,
+  listPayments,
+  voidPayment
+} from '../services/payments.service'
 import {
   createProduct,
   getProduct,
@@ -153,6 +186,53 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       postingFloor: {
         input: PostingFloorInputSchema,
         run: (input) => postingFloor(database.get(), input, ctx.now())
+      }
+    },
+    customers: {
+      list: {
+        input: CustomerListInputSchema,
+        run: (input) => listCustomers(database.get(), input)
+      },
+      get: { input: CustomerIdSchema, run: (id) => getCustomer(database.get(), id) },
+      create: {
+        input: CustomerCreateSchema,
+        run: (input) => createCustomer(database.get(), input, ctx.now())
+      },
+      update: {
+        input: CustomerUpdateSchema,
+        run: (input) => updateCustomer(database.get(), input)
+      },
+      setActive: {
+        input: SetActiveSchema,
+        run: (input) => setCustomerActive(database.get(), input)
+      },
+      ledger: {
+        input: CustomerLedgerInputSchema,
+        run: (input) => customerLedger(database.get(), input)
+      },
+      adjustBalance: {
+        input: BalanceAdjustmentInputSchema,
+        run: (input) => adjustCustomerBalance(database.get(), input, ctx.now())
+      },
+      search: {
+        input: CustomerSearchInputSchema,
+        run: (input) => searchCustomers(database.get(), input)
+      }
+    },
+    payments: {
+      list: { input: PaymentListInputSchema, run: (input) => listPayments(database.get(), input) },
+      get: { input: PaymentIdSchema, run: (id) => getPayment(database.get(), id) },
+      create: {
+        input: PaymentCreateSchema,
+        run: (input) => createPayment(database.get(), input, ctx.now())
+      },
+      checkDuplicate: {
+        input: PaymentDuplicateCheckSchema,
+        run: (input) => checkDuplicatePayment(database.get(), input)
+      },
+      void: {
+        input: PaymentVoidInputSchema,
+        run: (input) => voidPayment(database.get(), input, ctx.now())
       }
     }
   }

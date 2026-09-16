@@ -1,7 +1,7 @@
 import { CalendarDays } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { BackupStatusIndicator } from '@renderer/features/backup/BackupStatusIndicator'
-import { findNavItem } from '../navigation'
+import { findSectionItem } from '../navigation'
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
@@ -12,7 +12,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
 
 export function TopBar(): React.JSX.Element {
   const { pathname } = useLocation()
-  const title = findNavItem(pathname)?.label ?? 'StockFlow'
+  const title = findSectionItem(pathname)?.label ?? 'StockFlow'
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-6">

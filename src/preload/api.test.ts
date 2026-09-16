@@ -49,7 +49,20 @@ describe('createApi (the preload bridge)', () => {
       'stock:listAdjustments:function',
       'stock:stockCard:function',
       'stock:summary:function',
-      'stock:postingFloor:function'
+      'stock:postingFloor:function',
+      'customers:list:function',
+      'customers:get:function',
+      'customers:create:function',
+      'customers:update:function',
+      'customers:setActive:function',
+      'customers:ledger:function',
+      'customers:adjustBalance:function',
+      'customers:search:function',
+      'payments:list:function',
+      'payments:get:function',
+      'payments:create:function',
+      'payments:checkDuplicate:function',
+      'payments:void:function'
     ])
   })
 

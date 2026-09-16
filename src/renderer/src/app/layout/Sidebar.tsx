@@ -62,7 +62,7 @@ function SidebarLink({ item }: { item: NavItem }): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <NavLink to={item.path} end className={linkClassName}>
+        <NavLink to={item.path} end={!item.matchChildren} className={linkClassName}>
           <Icon className="size-4 shrink-0" aria-hidden />
           <span className="hidden truncate lg:inline">{item.label}</span>
         </NavLink>

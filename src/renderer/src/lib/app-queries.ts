@@ -5,6 +5,16 @@ import {
   type UseQueryOptions
 } from '@tanstack/react-query'
 import type {
+  Customer,
+  CustomerLedger,
+  CustomerLedgerInput,
+  CustomerListInput,
+  CustomerListItem,
+  CustomerSearchInput,
+  ListPage
+} from '@shared/customers'
+import type { PaymentDetail, PaymentListInput, PaymentSummary } from '@shared/payments'
+import type {
   Product,
   ProductListInput,
   ProductListPage,
@@ -184,6 +194,108 @@ export function postingFloorQuery(
     placeholderData: keepPreviousData,
     staleTime: 0
   })
+}
+
+/** `window.api.customers.list(...)`: one page of the Customers table with balances. */
+export function customerListQuery(
+  input: CustomerListInput
+): UseQueryOptions<
+  ListPage<CustomerListItem>,
+  Error,
+  ListPage<CustomerListItem>,
+  ReturnType<typeof queryKeys.customers.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.customers.list(input),
+    queryFn: () => unwrap(window.api.customers.list(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.customers.get(id)`: always read fresh (the balance and posting-date floor come from the ledger). */
+export function customerQuery(
+  id: number
+): UseQueryOptions<Customer, Error, Customer, ReturnType<typeof queryKeys.customers.detail>> {
+  return queryOptions({
+    queryKey: queryKeys.customers.detail(id),
+    queryFn: () => unwrap(window.api.customers.get(id)),
+    staleTime: 0
+  })
+}
+
+/** `window.api.customers.search(...)`: quick customer lookup. */
+export function customerSearchQuery(
+  input: CustomerSearchInput
+): UseQueryOptions<
+  readonly CustomerListItem[],
+  Error,
+  readonly CustomerListItem[],
+  ReturnType<typeof queryKeys.customers.search>
+> {
+  return queryOptions({
+    queryKey: queryKeys.customers.search(input),
+    queryFn: () => unwrap(window.api.customers.search(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.customers.ledger(...)`: one page of a customer's ledger with the running balance. */
+export function customerLedgerQuery(
+  input: CustomerLedgerInput
+): UseQueryOptions<
+  CustomerLedger,
+  Error,
+  CustomerLedger,
+  ReturnType<typeof queryKeys.customers.ledger>
+> {
+  return queryOptions({
+    queryKey: queryKeys.customers.ledger(input),
+    queryFn: () => unwrap(window.api.customers.ledger(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.payments.list(...)`: payments, newest first. */
+export function paymentListQuery(
+  input: PaymentListInput
+): UseQueryOptions<
+  ListPage<PaymentSummary>,
+  Error,
+  ListPage<PaymentSummary>,
+  ReturnType<typeof queryKeys.payments.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.payments.list(input),
+    queryFn: () => unwrap(window.api.payments.list(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.payments.get(id)`: one payment as saved. */
+export function paymentQuery(
+  id: number
+): UseQueryOptions<
+  PaymentDetail,
+  Error,
+  PaymentDetail,
+  ReturnType<typeof queryKeys.payments.detail>
+> {
+  return queryOptions({
+    queryKey: queryKeys.payments.detail(id),
+    queryFn: () => unwrap(window.api.payments.get(id)),
+    staleTime: 0
+  })
+}
+
+/**
+ * After a customer, payment, void or balance adjustment: customers (balances), payments and settings (the currency
+ * decimal places lock once financial data exists) are read again.
+ */
+export function refreshAfterCustomerChange(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.customers.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.payments.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
 }
 
 /**

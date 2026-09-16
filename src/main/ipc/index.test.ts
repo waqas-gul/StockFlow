@@ -521,6 +521,196 @@ describe('stock', () => {
   })
 })
 
+describe('customers and payments', () => {
+  // The fixture clock reads 14 Sep 2026: the main process dates payments and voids by it.
+  const TODAY = '2026-09-14'
+
+  function customerInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      name: 'Ali Raza',
+      shopName: 'Ali Traders',
+      phone: '0300-1234567',
+      address: null,
+      city: 'Lahore',
+      notes: null,
+      opening: { side: 'DUE', amountMinor: 500000, date: TODAY },
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  function paymentInput(customerId: number, overrides: Record<string, unknown> = {}): unknown {
+    return {
+      requestId: 'ipc-payment-0001',
+      customerId,
+      paymentDate: TODAY,
+      amountMinor: 200000,
+      method: 'CASH',
+      reference: null,
+      note: null,
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  it('creates, reads, lists, searches, edits, adjusts and deactivates a customer through IPC', async () => {
+    const created = await call('customers:create', customerInput())
+    expect(created).toMatchObject({ ok: true, data: { code: 'C-00002', balanceMinor: 500000 } })
+    const id = (created as { data: { id: number } }).data.id
+
+    await expect(call('customers:get', id)).resolves.toMatchObject({
+      ok: true,
+      data: { id, latestEntryDate: TODAY }
+    })
+    await expect(
+      call('customers:list', { page: 1, pageSize: 25, search: 'traders', status: 'active' })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1, items: [{ id }] } })
+    await expect(
+      call('customers:search', { query: 'C-00002', limit: 10, includeInactive: false })
+    ).resolves.toMatchObject({ ok: true, data: [{ id }] })
+    await expect(
+      call('customers:update', {
+        id,
+        name: 'Ali Raza Khan',
+        shopName: null,
+        phone: null,
+        address: null,
+        city: null,
+        notes: null
+      })
+    ).resolves.toMatchObject({ ok: true, data: { name: 'Ali Raza Khan', balanceMinor: 500000 } })
+    await expect(
+      call('customers:adjustBalance', {
+        customerId: id,
+        entryDate: TODAY,
+        direction: 'DECREASE',
+        amountMinor: 1000,
+        reason: 'Rounding',
+        currencyMinorDigits: 2
+      })
+    ).resolves.toMatchObject({ ok: true, data: { customer: { balanceMinor: 499000 } } })
+    await expect(
+      call('customers:ledger', { customerId: id, page: null, pageSize: 50 })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        total: 2,
+        rows: [{ type: 'OPENING' }, { type: 'ADJUSTMENT', runningBalanceMinor: 499000 }]
+      }
+    })
+    await expect(call('customers:setActive', { id, active: false })).resolves.toMatchObject({
+      ok: true,
+      data: { isActive: false }
+    })
+  })
+
+  it('receives, checks, lists, reads and voids a payment through IPC, dated by the main process clock', async () => {
+    const created = await call('customers:create', customerInput())
+    const customerId = (created as { data: { id: number } }).data.id
+
+    const paid = await call('payments:create', paymentInput(customerId))
+    expect(paid).toMatchObject({
+      ok: true,
+      data: { paymentNo: 'RCP-000001', balanceAfterMinor: 300000, replayed: false }
+    })
+    const paymentId = (paid as { data: { id: number } }).data.id
+    await expect(call('payments:create', paymentInput(customerId))).resolves.toMatchObject({
+      ok: true,
+      data: { id: paymentId, replayed: true }
+    })
+    await expect(
+      call('payments:checkDuplicate', { customerId, paymentDate: TODAY, amountMinor: 200000 })
+    ).resolves.toMatchObject({ ok: true, data: { duplicates: [{ id: paymentId }] } })
+    await expect(
+      call('payments:list', {
+        page: 1,
+        pageSize: 25,
+        search: 'ali',
+        status: 'all',
+        method: 'all',
+        dateFrom: TODAY,
+        dateTo: TODAY
+      })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1 } })
+    await expect(call('payments:get', paymentId)).resolves.toMatchObject({
+      ok: true,
+      data: { id: paymentId, status: 'POSTED' }
+    })
+    await expect(
+      call('payments:void', { id: paymentId, reason: 'Entered twice' })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { status: 'VOID', voidDate: TODAY, balanceAfterMinor: 500000 }
+    })
+  })
+
+  it('returns customer and payment errors as clean AppErrors, never SQLite text', async () => {
+    const created = await call('customers:create', customerInput())
+    const customerId = (created as { data: { id: number } }).data.id
+    const future = await call(
+      'payments:create',
+      paymentInput(customerId, { paymentDate: '2026-09-15' })
+    )
+    expect(future).toMatchObject({ ok: false, error: { code: 'DATE_NOT_ALLOWED' } })
+    await call('customers:setActive', { id: customerId, active: false })
+    const inactive = await call('payments:create', paymentInput(customerId))
+    expect(inactive).toMatchObject({ ok: false, error: { code: 'FORBIDDEN_STATE' } })
+    await expect(call('customers:get', 42)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' }
+    })
+    await expect(call('payments:void', { id: 42, reason: 'Gone' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' }
+    })
+    expect(JSON.stringify([future, inactive])).not.toMatch(/SQLITE|constraint/i)
+  })
+
+  it.each<[string, string, unknown]>([
+    ['a customer with an extra field', 'customers:create', { ...customerInput(), balanceMinor: 1 }],
+    [
+      'an opening balance in a profile edit',
+      'customers:update',
+      {
+        id: 1,
+        name: 'Walk-in',
+        shopName: null,
+        phone: null,
+        address: null,
+        city: null,
+        notes: null,
+        opening: null
+      }
+    ],
+    [
+      'a signed opening amount',
+      'customers:create',
+      customerInput({ opening: { side: 'DUE', amountMinor: -5, date: TODAY } })
+    ],
+    ['a zero payment', 'payments:create', paymentInput(1, { amountMinor: 0 })],
+    ['an unknown payment method', 'payments:create', paymentInput(1, { method: 'CARD' })],
+    ['a payment id as text', 'payments:get', '1'],
+    ['a void without a reason', 'payments:void', { id: 1 }],
+    ['a ledger page size over 100', 'customers:ledger', { customerId: 1, page: 1, pageSize: 500 }],
+    [
+      'an adjustment without a reason',
+      'customers:adjustBalance',
+      {
+        customerId: 1,
+        entryDate: TODAY,
+        direction: 'INCREASE',
+        amountMinor: 1,
+        currencyMinorDigits: 2
+      }
+    ]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})
+
 describe('backup and restore: the renderer never supplies a path', () => {
   it.each([
     'backup:status',

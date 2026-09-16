@@ -1,3 +1,5 @@
+import type { CustomerLedgerInput, CustomerListInput, CustomerSearchInput } from '@shared/customers'
+import type { PaymentListInput } from '@shared/payments'
 import type { ProductListInput, ProductSearchInput } from '@shared/products'
 import type { AdjustmentListInput, ReceiptListInput, StockCardInput } from '@shared/stock'
 
@@ -27,5 +29,19 @@ export const queryKeys = {
     card: (input: StockCardInput) => ['stock', 'card', input] as const,
     summary: (productId: number) => ['stock', 'summary', productId] as const,
     postingFloor: (productIds: readonly number[]) => ['stock', 'posting-floor', productIds] as const
+  },
+  customers: {
+    /** Every customer query: invalidated after any customer, payment or balance change. */
+    all: ['customers'] as const,
+    list: (input: CustomerListInput) => ['customers', 'list', input] as const,
+    detail: (id: number) => ['customers', 'detail', id] as const,
+    search: (input: CustomerSearchInput) => ['customers', 'search', input] as const,
+    ledger: (input: CustomerLedgerInput) => ['customers', 'ledger', input] as const
+  },
+  payments: {
+    /** Every payment query: invalidated after any payment or void. */
+    all: ['payments'] as const,
+    list: (input: PaymentListInput) => ['payments', 'list', input] as const,
+    detail: (id: number) => ['payments', 'detail', id] as const
   }
 }

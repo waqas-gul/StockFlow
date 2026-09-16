@@ -48,4 +48,11 @@ describe('Sidebar', () => {
       '/invoices'
     ])
   })
+
+  it('keeps Customers active on a customer page', () => {
+    const links = renderSidebarLinks('/customers/12')
+    expect(links.filter((link) => link.current === 'page').map((link) => link.href)).toEqual([
+      '/customers'
+    ])
+  })
 })

@@ -2,7 +2,7 @@
 import { mkdirSync } from 'node:fs'
 import { resolveDataPaths } from '../data-paths'
 import { initializeDatabase } from '../db'
-import type { Db } from '../db/adapter'
+import type { Db, SqlParams } from '../db/adapter'
 import type { DataSafetyFaults } from '../db/context'
 import { TEST_TIME, testContext, type TempDir, type TestContext } from '../db/test-utils'
 import { AutomaticBackups, type SchedulerTimers } from './auto-backup'
@@ -11,6 +11,23 @@ import { BackupService, type BackupDialogs } from './backup.service'
 import { LiveDatabase } from './live-database'
 import { OperationLock } from './operation-lock'
 import { RestoreService } from './restore.service'
+
+/** `db`, except that the `failAt`-th write matching `pattern` throws, as a disk failure part-way through would. */
+export function failingWrites(db: Db, pattern: RegExp, failAt = 1): Db {
+  let seen = 0
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === 'run') {
+        return (sql: string, params?: SqlParams) => {
+          if (pattern.test(sql) && ++seen === failAt) throw new Error('simulated write failure')
+          return target.run(sql, params)
+        }
+      }
+      const value: unknown = Reflect.get(target, property, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    }
+  })
+}
 
 /** A clock that only moves when the test moves it. */
 export interface TestClock {

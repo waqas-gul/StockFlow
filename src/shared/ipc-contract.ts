@@ -4,6 +4,30 @@
 // Input validation lives with each handler in the main process (src/main/ipc).
 import type { Company, CompanyCreateInput, CompanyUpdateInput } from './companies'
 import type {
+  BalanceAdjustmentInput,
+  BalanceAdjustmentResult,
+  Customer,
+  CustomerCreateInput,
+  CustomerLedger,
+  CustomerLedgerInput,
+  CustomerListInput,
+  CustomerListItem,
+  CustomerSearchInput,
+  CustomerUpdateInput,
+  ListPage
+} from './customers'
+import type {
+  DuplicatePaymentCheck,
+  PaymentCreateInput,
+  PaymentDetail,
+  PaymentDuplicateCheckInput,
+  PaymentListInput,
+  PaymentSaveResult,
+  PaymentSummary,
+  PaymentVoidInput,
+  PaymentVoidResult
+} from './payments'
+import type {
   Product,
   ProductActiveResult,
   ProductCreateInput,
@@ -129,6 +153,36 @@ export const ipcContract = Object.freeze({
     summary: call<number, StockSummary>(),
     /** The earliest and latest date a stock document for these products may have. */
     postingFloor: call<PostingFloorInput, PostingFloor>()
+  }),
+  customers: Object.freeze({
+    /** One page of the Customers table with balances: search and status filter. */
+    list: call<CustomerListInput, ListPage<CustomerListItem>>(),
+    /** One customer with the current balance and the latest ledger date (the posting-date floor). */
+    get: call<number, Customer>(),
+    /** Creates a customer with the next code and an optional opening balance, in one transaction. */
+    create: call<CustomerCreateInput, Customer>(),
+    /** Saves the profile only; the ledger is never changed. */
+    update: call<CustomerUpdateInput, Customer>(),
+    /** Activates or deactivates a customer; customers are never deleted. */
+    setActive: call<SetActiveInput, Customer>(),
+    /** One page of the customer's ledger with the running balance. */
+    ledger: call<CustomerLedgerInput, CustomerLedger>(),
+    /** Appends a balance correction (ADJUSTMENT) with its reason. */
+    adjustBalance: call<BalanceAdjustmentInput, BalanceAdjustmentResult>(),
+    /** Quick lookup by code, name, shop name, phone or city. */
+    search: call<CustomerSearchInput, readonly CustomerListItem[]>()
+  }),
+  payments: Object.freeze({
+    /** Payments, newest first: search, date range, status and method filters. */
+    list: call<PaymentListInput, ListPage<PaymentSummary>>(),
+    /** One payment as saved. */
+    get: call<number, PaymentDetail>(),
+    /** Posts a payment and its ledger entry (a repeated request id returns the saved payment). */
+    create: call<PaymentCreateInput, PaymentSaveResult>(),
+    /** Posted payments with the same customer, date and amount, for the soft duplicate warning. */
+    checkDuplicate: call<PaymentDuplicateCheckInput, DuplicatePaymentCheck>(),
+    /** Voids a posted payment, dated today, adding its amount back to the balance. */
+    void: call<PaymentVoidInput, PaymentVoidResult>()
   })
 })
 

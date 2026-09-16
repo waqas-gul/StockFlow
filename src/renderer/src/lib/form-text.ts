@@ -52,6 +52,24 @@ export function wholeNumberText(min: number, max: number): z.ZodType<number, str
   })
 }
 
+/** A required amount above zero (a payment or a correction): blank is refused with `required`, and so is 0. */
+export function positiveMoneyText(
+  minorDigits: number,
+  required: string
+): z.ZodType<number, string> {
+  return z.string().transform((text, ctx) => {
+    const parsed = parseMoney(text, { minorDigits })
+    if (parsed.ok && parsed.value > 0) return parsed.value
+    const message = parsed.ok
+      ? 'Enter an amount greater than zero.'
+      : parsed.error === 'EMPTY'
+        ? required
+        : moneyMessage(parsed.error, minorDigits)
+    ctx.addIssue({ code: 'custom', message })
+    return z.NEVER
+  })
+}
+
 /** A required amount: like moneyText, but blank is refused with `required`. */
 export function requiredMoneyText(
   minorDigits: number,

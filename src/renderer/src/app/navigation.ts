@@ -19,6 +19,8 @@ export type NavItem = {
   icon: LucideIcon
   /** Shown on the placeholder page until the section is implemented. */
   placeholder: string
+  /** The section also owns the pages below its path (e.g. /customers/12). */
+  matchChildren?: boolean
 }
 
 export type NavSection = {
@@ -84,7 +86,8 @@ export const mainNavSections: NavSection[] = [
         path: '/customers',
         label: 'Customers',
         icon: Users,
-        placeholder: 'Customer management will be implemented in a later phase.'
+        placeholder: 'Customer management will be implemented in a later phase.',
+        matchChildren: true
       },
       {
         path: '/payments',
@@ -127,4 +130,12 @@ export const allNavItems: NavItem[] = [
 
 export function findNavItem(pathname: string): NavItem | undefined {
   return allNavItems.find((item) => item.path === pathname)
+}
+
+/** The section a page belongs to: its own item, or the item that owns the pages below it. */
+export function findSectionItem(pathname: string): NavItem | undefined {
+  return (
+    findNavItem(pathname) ??
+    allNavItems.find((item) => item.matchChildren && pathname.startsWith(`${item.path}/`))
+  )
 }

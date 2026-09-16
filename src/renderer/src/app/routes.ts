@@ -1,5 +1,8 @@
 import type { RouteObject } from 'react-router'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
+import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
+import { CustomersPage } from '@renderer/features/customers/CustomersPage'
+import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { StockAdjustmentsPage } from '@renderer/features/stock/StockAdjustmentsPage'
@@ -9,19 +12,24 @@ import { allNavItems, settingsNavItem } from './navigation'
 import { NotFoundPage } from './NotFoundPage'
 import { RouteErrorPage } from './RouteErrorPage'
 
-// Implemented sections: Products (Phase 5), Stock In and Stock Adjustments (Phase 6) and Settings (Phase 4B). Every
-// other section is a placeholder until its phase replaces the Component.
+// Implemented sections: Products (Phase 5), Stock In and Stock Adjustments (Phase 6), Customers and Payments (Phase 7)
+// and Settings (Phase 4B). Every other section is a placeholder until its phase replaces the Component.
 const implemented: Readonly<Record<string, React.ComponentType>> = {
   '/products': ProductsPage,
   '/stock/in': StockInPage,
   '/stock/adjustments': StockAdjustmentsPage,
+  '/customers': CustomersPage,
+  '/payments': PaymentsPage,
   [settingsNavItem.path]: SettingsPage
 }
 
-const sectionRoutes: RouteObject[] = allNavItems.map((item) => {
-  const Component = implemented[item.path] ?? PlaceholderPage
-  return item.path === '/' ? { index: true, Component } : { path: item.path.slice(1), Component }
-})
+const sectionRoutes: RouteObject[] = [
+  ...allNavItems.map((item): RouteObject => {
+    const Component = implemented[item.path] ?? PlaceholderPage
+    return item.path === '/' ? { index: true, Component } : { path: item.path.slice(1), Component }
+  }),
+  { path: 'customers/:customerId', Component: CustomerDetailPage }
+]
 
 export const routes: RouteObject[] = [
   {

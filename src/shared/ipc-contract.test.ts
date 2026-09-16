@@ -8,6 +8,30 @@ import {
 } from './ipc-contract'
 import type { Company, CompanyCreateInput, CompanyUpdateInput } from './companies'
 import type {
+  BalanceAdjustmentInput,
+  BalanceAdjustmentResult,
+  Customer,
+  CustomerCreateInput,
+  CustomerLedger,
+  CustomerLedgerInput,
+  CustomerListInput,
+  CustomerListItem,
+  CustomerSearchInput,
+  CustomerUpdateInput,
+  ListPage
+} from './customers'
+import type {
+  DuplicatePaymentCheck,
+  PaymentCreateInput,
+  PaymentDetail,
+  PaymentDuplicateCheckInput,
+  PaymentListInput,
+  PaymentSaveResult,
+  PaymentSummary,
+  PaymentVoidInput,
+  PaymentVoidResult
+} from './payments'
+import type {
   Product,
   ProductActiveResult,
   ProductCreateInput,
@@ -75,17 +99,30 @@ const CHANNELS = [
   'stock:listAdjustments',
   'stock:stockCard',
   'stock:summary',
-  'stock:postingFloor'
+  'stock:postingFloor',
+  'customers:list',
+  'customers:get',
+  'customers:create',
+  'customers:update',
+  'customers:setActive',
+  'customers:ledger',
+  'customers:adjustBalance',
+  'customers:search',
+  'payments:list',
+  'payments:get',
+  'payments:create',
+  'payments:checkDuplicate',
+  'payments:void'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B, 5 and 6 calls', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5, 6 and 7 calls', () => {
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
-      domain: 'stock',
-      action: 'postingFloor',
-      channel: 'stock:postingFloor'
+      domain: 'payments',
+      action: 'void',
+      channel: 'payments:void'
     })
   })
 
@@ -107,7 +144,15 @@ describe('IPC contract', () => {
   it('types window.api from the contract', () => {
     expectTypeOf<IpcChannel>().toEqualTypeOf<(typeof CHANNELS)[number]>()
     expectTypeOf<keyof StockFlowApi>().toEqualTypeOf<
-      'app' | 'settings' | 'backup' | 'maintenance' | 'companies' | 'products' | 'stock'
+      | 'app'
+      | 'settings'
+      | 'backup'
+      | 'maintenance'
+      | 'companies'
+      | 'products'
+      | 'stock'
+      | 'customers'
+      | 'payments'
     >()
     expectTypeOf<StockFlowApi['app']['info']>().toEqualTypeOf<() => Promise<Result<AppInfo>>>()
     expectTypeOf<StockFlowApi['settings']['get']>().toEqualTypeOf<
@@ -190,6 +235,45 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['stock']['postingFloor']>().toEqualTypeOf<
       (input: PostingFloorInput) => Promise<Result<PostingFloor>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['list']>().toEqualTypeOf<
+      (input: CustomerListInput) => Promise<Result<ListPage<CustomerListItem>>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['get']>().toEqualTypeOf<
+      (input: number) => Promise<Result<Customer>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['create']>().toEqualTypeOf<
+      (input: CustomerCreateInput) => Promise<Result<Customer>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['update']>().toEqualTypeOf<
+      (input: CustomerUpdateInput) => Promise<Result<Customer>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['setActive']>().toEqualTypeOf<
+      (input: SetActiveInput) => Promise<Result<Customer>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['ledger']>().toEqualTypeOf<
+      (input: CustomerLedgerInput) => Promise<Result<CustomerLedger>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['adjustBalance']>().toEqualTypeOf<
+      (input: BalanceAdjustmentInput) => Promise<Result<BalanceAdjustmentResult>>
+    >()
+    expectTypeOf<StockFlowApi['customers']['search']>().toEqualTypeOf<
+      (input: CustomerSearchInput) => Promise<Result<readonly CustomerListItem[]>>
+    >()
+    expectTypeOf<StockFlowApi['payments']['list']>().toEqualTypeOf<
+      (input: PaymentListInput) => Promise<Result<ListPage<PaymentSummary>>>
+    >()
+    expectTypeOf<StockFlowApi['payments']['get']>().toEqualTypeOf<
+      (input: number) => Promise<Result<PaymentDetail>>
+    >()
+    expectTypeOf<StockFlowApi['payments']['create']>().toEqualTypeOf<
+      (input: PaymentCreateInput) => Promise<Result<PaymentSaveResult>>
+    >()
+    expectTypeOf<StockFlowApi['payments']['checkDuplicate']>().toEqualTypeOf<
+      (input: PaymentDuplicateCheckInput) => Promise<Result<DuplicatePaymentCheck>>
+    >()
+    expectTypeOf<StockFlowApi['payments']['void']>().toEqualTypeOf<
+      (input: PaymentVoidInput) => Promise<Result<PaymentVoidResult>>
     >()
   })
 })

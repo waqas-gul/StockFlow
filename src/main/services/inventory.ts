@@ -3,6 +3,7 @@ import { DomainError, createUnitSet, formatQuantity, type StockPosition } from '
 import { formatDocumentNumber } from '@shared/stock'
 import type { Db } from '../db/adapter'
 import { AppFailure } from '../errors'
+import { takeSequenceValue } from './sequences'
 
 /*
  * The inventory rules every stock-changing transaction shares (plan §8, §11.5). Receipts and adjustments use them now;
@@ -125,13 +126,7 @@ export function allocateDocumentNumber(
   sequence: 'receipt' | 'adjustment',
   prefix: string
 ): string {
-  if (!db.inTransaction) throw new Error('Document numbers are allocated inside a transaction.')
-  const row = db.get<{ next_value: number }>('SELECT next_value FROM sequences WHERE name = ?', [
-    sequence
-  ])
-  if (row === undefined) throw new Error(`The ${sequence} sequence is missing.`)
-  db.run('UPDATE sequences SET next_value = next_value + 1 WHERE name = ?', [sequence])
-  return formatDocumentNumber(prefix, row.next_value)
+  return formatDocumentNumber(prefix, takeSequenceValue(db, sequence))
 }
 
 /** 'P-001 Tea 950g'. */
