@@ -1,16 +1,12 @@
 import { z } from 'zod'
 import { MAX_MINOR_DIGITS } from './domain/guards'
+import { wholeNumber } from './validation'
 
 /*
  * The rules for every setting (the `settings` table stores each value as JSON). Shared: the main process validates
  * every read and write with them, and the Settings screen uses the same rules for its form. There is no
  * negative-stock setting (plan §8.3).
  */
-
-function wholeNumber(min: number, max: number): z.ZodNumber {
-  const message = `Enter a whole number from ${min.toLocaleString('en-US')} to ${max.toLocaleString('en-US')}.`
-  return z.number({ error: message }).int(message).min(min, message).max(max, message)
-}
 
 const CURRENCY_CODE_MESSAGE = 'Use a three-letter currency code, such as PKR.'
 const INVOICE_PREFIX_MESSAGE = 'Use up to 12 letters, digits, dots, dashes or underscores.'

@@ -2,6 +2,17 @@
 //
 // No runtime imports: the sandboxed preload bundles this file and cannot load packages such as Zod.
 // Input validation lives with each handler in the main process (src/main/ipc).
+import type { Company, CompanyCreateInput, CompanyUpdateInput } from './companies'
+import type {
+  Product,
+  ProductActiveResult,
+  ProductCreateInput,
+  ProductListInput,
+  ProductListPage,
+  ProductSearchInput,
+  ProductSearchItem,
+  ProductUpdateInput
+} from './products'
 import type { EditableSettingsPatch, SettingsView } from './settings'
 import type { AppInfo } from './types/app-info'
 import type {
@@ -13,6 +24,7 @@ import type {
 } from './types/backup'
 import type { IntegrityCheckReport } from './types/maintenance'
 import type { Result } from './types/result'
+import type { SetActiveInput } from './validation'
 
 declare const callTypes: unique symbol
 
@@ -57,6 +69,29 @@ export const ipcContract = Object.freeze({
   maintenance: Object.freeze({
     /** Runs the read-only integrity check and reports it in plain language. */
     integrityCheck: call<void, IntegrityCheckReport>()
+  }),
+  companies: Object.freeze({
+    /** Every company (brand), active or not, by name. */
+    list: call<void, readonly Company[]>(),
+    create: call<CompanyCreateInput, Company>(),
+    /** Renames a company. */
+    update: call<CompanyUpdateInput, Company>(),
+    /** Activates or deactivates a company; companies are never deleted. */
+    setActive: call<SetActiveInput, Company>()
+  }),
+  products: Object.freeze({
+    /** One page of the Products table: search, company and status filters. */
+    list: call<ProductListInput, ProductListPage>(),
+    /** One product with its units, stock and unit lock state. */
+    get: call<number, Product>(),
+    /** Creates a product with its units in one transaction. */
+    create: call<ProductCreateInput, Product>(),
+    /** Saves a product and its whole unit list in one transaction. */
+    update: call<ProductUpdateInput, Product>(),
+    /** Activates or deactivates a product; products are never deleted. */
+    setActive: call<SetActiveInput, ProductActiveResult>(),
+    /** Quick lookup by code, name or company name. */
+    search: call<ProductSearchInput, readonly ProductSearchItem[]>()
   })
 })
 

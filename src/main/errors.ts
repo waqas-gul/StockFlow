@@ -15,6 +15,20 @@ export class AppFailure extends Error {
   }
 }
 
+/**
+ * The input parsed by `schema`, or a VALIDATION AppFailure with the field errors. Services parse again what the IPC
+ * boundary already checked: they never trust their caller.
+ */
+export function parseInput<T>(schema: z.ZodType<T>, input: unknown): T {
+  const parsed = schema.safeParse(input)
+  if (parsed.success) return parsed.data
+  throw new AppFailure({
+    code: 'VALIDATION',
+    message: 'Check the highlighted fields.',
+    fieldErrors: fieldErrorsOf(parsed.error)
+  })
+}
+
 /** Zod issues as form field errors, keyed by input path (e.g. `lines.0.quantity`); whole-input issues go under `root`. */
 export function fieldErrorsOf(error: z.ZodError): Record<string, string[]> {
   const fieldErrors: Record<string, string[]> = {}

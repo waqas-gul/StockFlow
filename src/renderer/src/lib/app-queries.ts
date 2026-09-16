@@ -1,4 +1,5 @@
-import { queryOptions } from '@tanstack/react-query'
+import { keepPreviousData, queryOptions, type UseQueryOptions } from '@tanstack/react-query'
+import type { Product, ProductListInput, ProductListPage } from '@shared/products'
 import { unwrap } from './api'
 import { queryKeys } from './query-keys'
 
@@ -24,3 +25,36 @@ export const backupStatusQuery = queryOptions({
   queryFn: () => unwrap(window.api.backup.status()),
   refetchInterval: 60_000
 })
+
+/** `window.api.companies.list()`: every company, active or not. */
+export const companiesQuery = queryOptions({
+  queryKey: queryKeys.companies,
+  queryFn: () => unwrap(window.api.companies.list())
+})
+
+/** `window.api.products.list(...)`: one page of the Products table; the previous page stays shown while loading. */
+export function productListQuery(
+  input: ProductListInput
+): UseQueryOptions<
+  ProductListPage,
+  Error,
+  ProductListPage,
+  ReturnType<typeof queryKeys.products.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.products.list(input),
+    queryFn: () => unwrap(window.api.products.list(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.products.get(id)`: always read fresh for the edit form (its unit lock state comes from the database). */
+export function productQuery(
+  id: number
+): UseQueryOptions<Product, Error, Product, ReturnType<typeof queryKeys.products.detail>> {
+  return queryOptions({
+    queryKey: queryKeys.products.detail(id),
+    queryFn: () => unwrap(window.api.products.get(id)),
+    staleTime: 0
+  })
+}

@@ -1,14 +1,21 @@
 import type { RouteObject } from 'react-router'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
+import { ProductsPage } from '@renderer/features/products/ProductsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { AppShell } from './layout/AppShell'
 import { allNavItems, settingsNavItem } from './navigation'
 import { NotFoundPage } from './NotFoundPage'
 import { RouteErrorPage } from './RouteErrorPage'
 
-// Settings is implemented (Phase 4B); every other section is a placeholder until its phase replaces the Component.
+// Implemented sections: Products (Phase 5) and Settings (Phase 4B). Every other section is a placeholder until its
+// phase replaces the Component.
+const implemented: Readonly<Record<string, React.ComponentType>> = {
+  '/products': ProductsPage,
+  [settingsNavItem.path]: SettingsPage
+}
+
 const sectionRoutes: RouteObject[] = allNavItems.map((item) => {
-  const Component = item.path === settingsNavItem.path ? SettingsPage : PlaceholderPage
+  const Component = implemented[item.path] ?? PlaceholderPage
   return item.path === '/' ? { index: true, Component } : { path: item.path.slice(1), Component }
 })
 

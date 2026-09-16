@@ -201,6 +201,157 @@ describe('settings', () => {
   })
 })
 
+describe('companies and products', () => {
+  const unit = {
+    id: null,
+    name: 'Piece',
+    shortName: null,
+    baseQty: 1,
+    isBase: true,
+    canSell: true,
+    canPurchase: true,
+    wholesalePriceMinor: null,
+    retailPriceMinor: 1250,
+    defaultCostMinor: null,
+    isActive: true
+  }
+  const product = {
+    code: 'P-001',
+    name: 'Tea 950g',
+    companyId: null,
+    packingLabel: '1*12*18',
+    lowStockThresholdBase: 0,
+    currencyMinorDigits: 2,
+    units: [unit]
+  }
+
+  it('manages companies through IPC, with duplicate names refused cleanly', async () => {
+    const created = await call('companies:create', { name: ' Acme ' })
+    expect(created).toMatchObject({
+      ok: true,
+      data: { name: 'Acme', isActive: true, productCount: 0 }
+    })
+    const id = created.ok ? (created.data as { id: number }).id : 0
+    await expect(call('companies:create', { name: 'ACME' })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'DUPLICATE',
+        message: 'A company named "ACME" already exists.',
+        fieldErrors: { name: ['A company named "ACME" already exists.'] }
+      }
+    })
+    await expect(call('companies:update', { id, name: 'Acme Foods' })).resolves.toMatchObject({
+      ok: true,
+      data: { name: 'Acme Foods' }
+    })
+    await expect(call('companies:setActive', { id, active: false })).resolves.toMatchObject({
+      ok: true,
+      data: { isActive: false }
+    })
+    await expect(call('companies:list')).resolves.toMatchObject({
+      ok: true,
+      data: [{ id, name: 'Acme Foods', isActive: false }]
+    })
+  })
+
+  it('creates, reads, lists, searches, updates and deactivates a product through IPC', async () => {
+    const created = await call('products:create', product)
+    expect(created).toMatchObject({
+      ok: true,
+      data: { code: 'P-001', stockQtyBase: 0, hasStockMovements: false }
+    })
+    const saved = (created as { data: { id: number; units: Array<{ id: number }> } }).data
+
+    await expect(call('products:get', saved.id)).resolves.toMatchObject({
+      ok: true,
+      data: { id: saved.id }
+    })
+    await expect(
+      call('products:list', {
+        page: 1,
+        pageSize: 25,
+        search: 'tea',
+        companyId: null,
+        status: 'active'
+      })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1, items: [{ code: 'P-001' }] } })
+    await expect(
+      call('products:search', { query: 'p-001', limit: 10, includeInactive: false })
+    ).resolves.toMatchObject({ ok: true, data: [{ id: saved.id }] })
+    await expect(
+      call('products:update', {
+        ...product,
+        id: saved.id,
+        units: [{ ...unit, id: saved.units[0].id, retailPriceMinor: 1300 }]
+      })
+    ).resolves.toMatchObject({ ok: true, data: { units: [{ retailPriceMinor: 1300 }] } })
+    await expect(call('products:setActive', { id: saved.id, active: false })).resolves.toEqual({
+      ok: true,
+      data: { id: saved.id, isActive: false, stockQtyBase: 0, warning: null }
+    })
+    // A configured price locks the currency decimal places (Phase 4C).
+    await expect(call('settings:get')).resolves.toMatchObject({
+      ok: true,
+      data: { minorDigitsLocked: true }
+    })
+  })
+
+  it('maps business errors to clean messages, never SQLite text', async () => {
+    await call('products:create', product)
+    const duplicate = await call('products:create', { ...product, name: 'Other' })
+    expect(duplicate).toEqual({
+      ok: false,
+      error: {
+        code: 'DUPLICATE',
+        message: 'Another product already uses the code "P-001".',
+        fieldErrors: { code: ['Another product already uses the code "P-001".'] }
+      }
+    })
+    const nested = await call('products:create', {
+      ...product,
+      code: 'P-002',
+      units: [
+        unit,
+        { ...unit, name: 'Pack', baseQty: 4, isBase: false },
+        { ...unit, name: 'Box', baseQty: 6, isBase: false }
+      ]
+    })
+    expect(nested).toMatchObject({
+      ok: false,
+      error: {
+        code: 'VALIDATION',
+        fieldErrors: { 'units.2.baseQty': ['Must be a whole multiple of 4 (Pack).'] }
+      }
+    })
+    await expect(call('products:get', 999)).resolves.toEqual({
+      ok: false,
+      error: { code: 'NOT_FOUND', message: 'This product no longer exists.' }
+    })
+    expect(JSON.stringify([duplicate, nested])).not.toMatch(/SQLITE|constraint|UNIQUE/i)
+  })
+
+  it.each<[string, string, unknown]>([
+    ['a product id as text', 'products:get', '1'],
+    [
+      'a product with an extra field',
+      'products:create',
+      { ...product, sql: 'DROP TABLE products' }
+    ],
+    [
+      'a list page size over 100',
+      'products:list',
+      { page: 1, pageSize: 1000, search: '', companyId: null, status: 'all' }
+    ],
+    ['a company without a name', 'companies:create', {}],
+    ['companies:list with input', 'companies:list', { path: 'C:\\x' }]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})
+
 describe('backup and restore: the renderer never supplies a path', () => {
   it.each([
     'backup:status',

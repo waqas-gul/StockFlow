@@ -1,12 +1,35 @@
 import { z } from 'zod'
 import type { IpcChannel } from '@shared/ipc-contract'
+import { CompanyCreateSchema, CompanyUpdateSchema } from '@shared/companies'
+import {
+  ProductCreateSchema,
+  ProductIdSchema,
+  ProductListInputSchema,
+  ProductSearchInputSchema,
+  ProductUpdateSchema
+} from '@shared/products'
 import { EditableSettingsPatchSchema } from '@shared/settings'
 import { RESTORE_CONFIRMATION } from '@shared/types/backup'
+import { SetActiveSchema } from '@shared/validation'
 import { readAppInfo, type AppInfoSources } from '../app-info'
 import type { DataSafetyContext } from '../db/context'
 import type { BackupService } from '../services/backup.service'
+import {
+  createCompany,
+  listCompanies,
+  setCompanyActive,
+  updateCompany
+} from '../services/companies.service'
 import type { LiveDatabase } from '../services/live-database'
 import { integrityCheckReport } from '../services/maintenance.service'
+import {
+  createProduct,
+  getProduct,
+  listProducts,
+  searchProducts,
+  setProductActive,
+  updateProduct
+} from '../services/products.service'
 import type { RestoreService } from '../services/restore.service'
 import { readSettingsView, updateSettingsView } from '../services/settings.service'
 import {
@@ -59,6 +82,27 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
     },
     maintenance: {
       integrityCheck: { input: NO_INPUT, run: () => integrityCheckReport(database.get(), ctx) }
+    },
+    // The services validate their input again with the same shared schemas.
+    companies: {
+      list: { input: NO_INPUT, run: () => listCompanies(database.get()) },
+      create: { input: CompanyCreateSchema, run: (input) => createCompany(database.get(), input) },
+      update: { input: CompanyUpdateSchema, run: (input) => updateCompany(database.get(), input) },
+      setActive: { input: SetActiveSchema, run: (input) => setCompanyActive(database.get(), input) }
+    },
+    products: {
+      list: { input: ProductListInputSchema, run: (input) => listProducts(database.get(), input) },
+      get: { input: ProductIdSchema, run: (id) => getProduct(database.get(), id) },
+      create: { input: ProductCreateSchema, run: (input) => createProduct(database.get(), input) },
+      update: { input: ProductUpdateSchema, run: (input) => updateProduct(database.get(), input) },
+      setActive: {
+        input: SetActiveSchema,
+        run: (input) => setProductActive(database.get(), input)
+      },
+      search: {
+        input: ProductSearchInputSchema,
+        run: (input) => searchProducts(database.get(), input)
+      }
     }
   }
 }

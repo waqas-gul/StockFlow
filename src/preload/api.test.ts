@@ -30,7 +30,17 @@ describe('createApi (the preload bridge)', () => {
       'backup:openFolder:function',
       'backup:selectRestoreCandidate:function',
       'backup:restore:function',
-      'maintenance:integrityCheck:function'
+      'maintenance:integrityCheck:function',
+      'companies:list:function',
+      'companies:create:function',
+      'companies:update:function',
+      'companies:setActive:function',
+      'products:list:function',
+      'products:get:function',
+      'products:create:function',
+      'products:update:function',
+      'products:setActive:function',
+      'products:search:function'
     ])
   })
 

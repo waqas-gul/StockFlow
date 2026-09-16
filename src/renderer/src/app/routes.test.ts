@@ -1,6 +1,7 @@
 import { matchRoutes } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
+import { ProductsPage } from '@renderer/features/products/ProductsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { allNavItems } from './navigation'
 import { NotFoundPage } from './NotFoundPage'
@@ -32,7 +33,7 @@ describe('navigation and routes', () => {
     expect([...paths].sort()).toEqual([...expectedPaths].sort())
   })
 
-  it.each(expectedPaths.filter((path) => path !== '/settings'))(
+  it.each(expectedPaths.filter((path) => path !== '/settings' && path !== '/products'))(
     'routes %s to its placeholder page',
     (path) => {
       expect(leafComponent(path)).toBe(PlaceholderPage)
@@ -41,6 +42,10 @@ describe('navigation and routes', () => {
 
   it('routes /settings to the Settings page', () => {
     expect(leafComponent('/settings')).toBe(SettingsPage)
+  })
+
+  it('routes /products to the Products page', () => {
+    expect(leafComponent('/products')).toBe(ProductsPage)
   })
 
   it('routes unknown paths to the not-found page', () => {

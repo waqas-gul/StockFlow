@@ -7,6 +7,8 @@
  * - RESTORE_FAILED: the restore stopped before it changed anything; StockFlow keeps running on the current data.
  * - FORBIDDEN_STATE also covers a backup or restore that is already running, and a restart in progress.
  * - SETTING_LOCKED: a setting that can no longer change (currency decimal places once financial data exists).
+ * - UNIT_LOCKED: a product unit change that stock history forbids (base quantity, base unit, removing a unit).
+ * - DUPLICATE: a name or code that is already used (company name, product code).
  */
 export type AppErrorCode =
   | 'VALIDATION'
@@ -22,6 +24,7 @@ export type AppErrorCode =
   | 'RESTORE_REJECTED'
   | 'RESTORE_FAILED'
   | 'SETTING_LOCKED'
+  | 'UNIT_LOCKED'
   | 'DB_ERROR'
   | 'INTERNAL'
 
