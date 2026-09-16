@@ -7,6 +7,7 @@ import {
   CustomerSearchInputSchema,
   CustomerUpdateSchema,
   formatCustomerCode,
+  isWalkInCustomer,
   type BalanceAdjustmentResult,
   type Customer,
   type CustomerLedger,
@@ -37,7 +38,8 @@ import { assertCurrencyDigits } from './settings.service'
  *   no number. The seeded walk-in customer owns C-00001. Names and shop names may repeat; only the code is unique.
  * - An opening balance is written only when the customer is created, as its first ledger entry, in the same transaction.
  *   Later corrections are ADJUSTMENT entries. Profile edits never touch the ledger.
- * - A customer is never deleted: it is deactivated, and its history stays readable.
+ * - A customer is never deleted: it is deactivated, and its history stays readable. The walk-in customer (C-00001) is
+ *   always active and keeps its name.
  * - Balances are Σ customer_ledger.amount_minor, read fresh on every call.
  */
 
@@ -212,7 +214,14 @@ export function postOpeningBalance(
 export function updateCustomer(db: Db, input: unknown): Customer {
   const customer = parseInput(CustomerUpdateSchema, input)
   return db.transaction(() => {
-    customerRow(db, customer.id)
+    const row = customerRow(db, customer.id)
+    if (isWalkInCustomer(row.code) && customer.name !== row.name) {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: `${row.code} ${row.name} is the walk-in customer, so its name cannot be changed.`,
+        fieldErrors: { name: ['The walk-in customer keeps its name.'] }
+      })
+    }
     db.run(
       `UPDATE customers SET name = ?, shop_name = ?, phone = ?, address = ?, city = ?, notes = ?, updated_at = ${NOW}
        WHERE id = ?`,
@@ -230,11 +239,20 @@ export function updateCustomer(db: Db, input: unknown): Customer {
   })
 }
 
-/** Activates or deactivates a customer; nothing is removed, and the balance and history stay. */
+/**
+ * Activates or deactivates a customer; nothing is removed, and the balance and history stay. The walk-in customer is
+ * always active.
+ */
 export function setCustomerActive(db: Db, input: unknown): Customer {
   const { id, active } = parseInput(SetActiveSchema, input)
   return db.transaction(() => {
     const row = customerRow(db, id)
+    if (!active && isWalkInCustomer(row.code)) {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: `${row.code} ${row.name} is the walk-in customer, so it is always active.`
+      })
+    }
     if ((row.is_active === 1) !== active) {
       db.run(`UPDATE customers SET is_active = ?, updated_at = ${NOW} WHERE id = ?`, [
         active ? 1 : 0,

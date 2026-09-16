@@ -45,6 +45,16 @@ export function balanceState(balanceMinor: number): BalanceState {
   return balanceMinor < 0 ? 'ADVANCE' : 'SETTLED'
 }
 
+/**
+ * The seeded "Cash / Walk-in" customer for counter sales. Codes never change, so the code identifies it. It is always
+ * active and keeps its name; it is the only walk-in customer.
+ */
+export const WALK_IN_CUSTOMER_CODE = 'C-00001'
+
+export function isWalkInCustomer(code: string): boolean {
+  return code === WALK_IN_CUSTOMER_CODE
+}
+
 /** 2 → 'C-00002'. */
 export function formatCustomerCode(value: number): string {
   return `${CUSTOMER_CODE_PREFIX}${String(value).padStart(CUSTOMER_CODE_DIGITS, '0')}`

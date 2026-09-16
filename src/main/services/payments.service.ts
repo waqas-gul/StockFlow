@@ -93,32 +93,56 @@ export function createPayment(db: Db, input: unknown, now: Date): PaymentSaveRes
       field: 'paymentDate'
     })
 
-    const paymentNo = formatDocumentNumber(PAYMENT_NUMBER_PREFIX, takeSequenceValue(db, 'payment'))
-    const id = Number(
-      db.run(
-        `INSERT INTO payments (payment_no, request_id, customer_id, payment_date, amount_minor, method, reference, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          paymentNo,
-          payment.requestId,
-          customer.id,
-          payment.paymentDate,
-          payment.amountMinor,
-          payment.method,
-          payment.reference,
-          payment.note
-        ]
-      ).lastInsertRowid
-    )
-    appendLedgerEntry(db, {
-      customerId: customer.id,
-      date: payment.paymentDate,
-      type: 'PAYMENT',
-      amountMinor: -payment.amountMinor,
-      paymentId: id
-    })
+    const id = insertPayment(db, { ...payment, customerId: customer.id, invoiceId: null })
     return saveResult(db, id, false)
   })
+}
+
+export interface PaymentPosting {
+  readonly requestId: string
+  readonly customerId: number
+  readonly paymentDate: string
+  /** Above zero. */
+  readonly amountMinor: number
+  readonly method: PaymentMethod
+  readonly reference: string | null
+  readonly note: string | null
+  /** The invoice the money was received with, for information only. */
+  readonly invoiceId: number | null
+}
+
+/**
+ * Writes a payment: the next RCP- number, the payments row and its PAYMENT ledger entry of −amount. Runs inside the
+ * caller's transaction, after the caller has checked the customer and the posting date. Returns the payment id.
+ */
+export function insertPayment(db: Db, payment: PaymentPosting): number {
+  const paymentNo = formatDocumentNumber(PAYMENT_NUMBER_PREFIX, takeSequenceValue(db, 'payment'))
+  const id = Number(
+    db.run(
+      `INSERT INTO payments (payment_no, request_id, customer_id, payment_date, amount_minor, method, reference, note,
+         invoice_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        paymentNo,
+        payment.requestId,
+        payment.customerId,
+        payment.paymentDate,
+        payment.amountMinor,
+        payment.method,
+        payment.reference,
+        payment.note,
+        payment.invoiceId
+      ]
+    ).lastInsertRowid
+  )
+  appendLedgerEntry(db, {
+    customerId: payment.customerId,
+    date: payment.paymentDate,
+    type: 'PAYMENT',
+    amountMinor: -payment.amountMinor,
+    paymentId: id
+  })
+  return id
 }
 
 /** One payment as saved. */

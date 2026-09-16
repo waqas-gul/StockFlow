@@ -29,6 +29,24 @@ export function failingWrites(db: Db, pattern: RegExp, failAt = 1): Db {
   })
 }
 
+/** `db`, except that the `failAt`-th read (get or all) matching `pattern` throws, e.g. the read-back after the last write. */
+export function failingReads(db: Db, pattern: RegExp, failAt = 1): Db {
+  let seen = 0
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === 'get' || property === 'all') {
+        const read = property === 'get' ? target.get.bind(target) : target.all.bind(target)
+        return (sql: string, params?: SqlParams) => {
+          if (pattern.test(sql) && ++seen === failAt) throw new Error('simulated read failure')
+          return read(sql, params)
+        }
+      }
+      const value: unknown = Reflect.get(target, property, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    }
+  })
+}
+
 /** A clock that only moves when the test moves it. */
 export interface TestClock {
   readonly read: () => Date

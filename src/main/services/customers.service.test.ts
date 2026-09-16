@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { BalanceAdjustmentInput, Customer, CustomerCreateInput } from '@shared/customers'
+import {
+  WALK_IN_CUSTOMER_CODE,
+  isWalkInCustomer,
+  type BalanceAdjustmentInput,
+  type Customer,
+  type CustomerCreateInput
+} from '@shared/customers'
 import type { Db } from '../db/adapter'
 import {
   createSchemaDatabase,
@@ -331,6 +337,78 @@ describe('updateCustomer and setCustomerActive', () => {
     expect(active).toMatchObject({ isActive: true, balanceMinor: 500000 })
     expect(count('customers')).toBe(2)
     expect(failure(() => setCustomerActive(db, { id: 999, active: false })).code).toBe('NOT_FOUND')
+  })
+})
+
+describe('the walk-in customer', () => {
+  function walkIn(): Customer {
+    const row = db.get<{ id: number }>('SELECT id FROM customers WHERE code = ?', [
+      WALK_IN_CUSTOMER_CODE
+    ])!
+    return getCustomer(db, row.id)
+  }
+
+  function profile(customer: Customer, overrides: Record<string, unknown> = {}): unknown {
+    return {
+      id: customer.id,
+      name: customer.name,
+      shopName: customer.shopName,
+      phone: customer.phone,
+      address: customer.address,
+      city: customer.city,
+      notes: customer.notes,
+      ...overrides
+    }
+  }
+
+  it('is the seeded C-00001 Cash / Walk-in, and is recognised by its code', () => {
+    expect(walkIn()).toMatchObject({ code: 'C-00001', name: 'Cash / Walk-in', isActive: true })
+    expect(isWalkInCustomer('C-00001')).toBe(true)
+    expect(isWalkInCustomer(create().code)).toBe(false)
+  })
+
+  it('cannot be deactivated', () => {
+    const customer = walkIn()
+    const error = failure(() => setCustomerActive(db, { id: customer.id, active: false }))
+    expect(error).toEqual({
+      code: 'FORBIDDEN_STATE',
+      message: 'C-00001 Cash / Walk-in is the walk-in customer, so it is always active.'
+    })
+    expect(walkIn().isActive).toBe(true)
+    // Activating it again is harmless.
+    expect(setCustomerActive(db, { id: customer.id, active: true }).isActive).toBe(true)
+  })
+
+  it('can be reactivated if an older version deactivated it', () => {
+    const customer = walkIn()
+    db.run('UPDATE customers SET is_active = 0 WHERE id = ?', [customer.id])
+    expect(setCustomerActive(db, { id: customer.id, active: true }).isActive).toBe(true)
+  })
+
+  it('keeps its name; its other details can be edited', () => {
+    const customer = walkIn()
+    const error = failure(() => updateCustomer(db, profile(customer, { name: 'Counter Sales' })))
+    expect(error).toEqual({
+      code: 'FORBIDDEN_STATE',
+      message: 'C-00001 Cash / Walk-in is the walk-in customer, so its name cannot be changed.',
+      fieldErrors: { name: ['The walk-in customer keeps its name.'] }
+    })
+    expect(
+      failure(() => updateCustomer(db, profile(customer, { name: 'cash / walk-in' }))).code
+    ).toBe('FORBIDDEN_STATE')
+    expect(walkIn().name).toBe('Cash / Walk-in')
+
+    const updated = updateCustomer(
+      db,
+      profile(customer, { city: 'Lahore', notes: 'Counter sales' })
+    )
+    expect(updated).toMatchObject({
+      code: 'C-00001',
+      name: 'Cash / Walk-in',
+      city: 'Lahore',
+      notes: 'Counter sales',
+      isActive: true
+    })
   })
 })
 

@@ -114,6 +114,7 @@ export interface LedgerEntryInput {
   readonly type: LedgerEntryType
   /** Signed: positive when the customer owes more. */
   readonly amountMinor: number
+  readonly invoiceId?: number
   readonly paymentId?: number
   readonly note?: string | null
 }
@@ -126,13 +127,14 @@ export function appendLedgerEntry(db: Db, entry: LedgerEntryInput): number {
   if (!db.inTransaction) throw new Error('Ledger entries are appended inside a transaction.')
   const id = Number(
     db.run(
-      `INSERT INTO customer_ledger (customer_id, entry_date, type, amount_minor, payment_id, note)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO customer_ledger (customer_id, entry_date, type, amount_minor, invoice_id, payment_id, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         entry.customerId,
         entry.date,
         entry.type,
         entry.amountMinor,
+        entry.invoiceId ?? null,
         entry.paymentId ?? null,
         entry.note ?? null
       ]
