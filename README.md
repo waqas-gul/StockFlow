@@ -48,6 +48,14 @@ the damaged database is moved unchanged to `recovery\damaged-live-db_<date>_<tim
 files. These files are not backups: they are kept only in case a specialist needs them. StockFlow also refuses to
 start with a database whose recorded migration checksums differ from its own, and changes nothing in it.
 
+When normal startup refuses the database because it is damaged or cannot be verified (corruption, a failed integrity
+or foreign key check, a checksum mismatch, a file that is not StockFlow's), a native dialog offers **Restore Backup**
+or **Exit** before any window opens. The chosen backup is validated and summarized, the restore needs a ticked
+confirmation, and StockFlow relaunches afterwards; it uses the same restore engine as Settings. At startup, temporary
+files that an interrupted backup left in `backups\auto`, `pre-migration` or `pre-restore` (StockFlow backup names
+ending in `.db.tmp` or `.json.tmp`, older than an hour) are removed. The currency's decimal places (minor digits) can
+no longer change once any amount has been entered: amounts are stored as whole minor units.
+
 ### Tests
 
 ```bash

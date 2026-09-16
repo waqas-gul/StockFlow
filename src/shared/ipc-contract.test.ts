@@ -6,7 +6,7 @@ import {
   type IpcChannel,
   type StockFlowApi
 } from './ipc-contract'
-import type { EditableSettings, EditableSettingsPatch } from './settings'
+import type { EditableSettingsPatch, SettingsView } from './settings'
 import type { AppInfo } from './types/app-info'
 import type {
   BackupStatus,
@@ -63,10 +63,10 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['app']['info']>().toEqualTypeOf<() => Promise<Result<AppInfo>>>()
     expectTypeOf<StockFlowApi['settings']['get']>().toEqualTypeOf<
-      () => Promise<Result<EditableSettings>>
+      () => Promise<Result<SettingsView>>
     >()
     expectTypeOf<StockFlowApi['settings']['update']>().toEqualTypeOf<
-      (input: EditableSettingsPatch) => Promise<Result<EditableSettings>>
+      (input: EditableSettingsPatch) => Promise<Result<SettingsView>>
     >()
     expectTypeOf<StockFlowApi['backup']['status']>().toEqualTypeOf<
       () => Promise<Result<BackupStatus>>

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle } from 'lucide-react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
-import type { EditableSettings, EditableSettingsPatch } from '@shared/settings'
+import type { EditableSettings, EditableSettingsPatch, SettingsView } from '@shared/settings'
 import { Button } from '@renderer/components/ui/button'
 import {
   Card,
@@ -33,7 +33,9 @@ import {
 /** Settings → Business, Currency and Invoice, once the settings have loaded. */
 export function SettingsSection(): React.JSX.Element {
   const { data, error } = useQuery(settingsQuery)
-  if (data) return <SettingsForm settings={data} />
+  if (data) {
+    return <SettingsForm settings={data.values} minorDigitsLocked={data.minorDigitsLocked} />
+  }
   return (
     <Card>
       <CardHeader>
@@ -50,7 +52,14 @@ export function SettingsSection(): React.JSX.Element {
   )
 }
 
-export function SettingsForm({ settings }: { settings: EditableSettings }): React.JSX.Element {
+export function SettingsForm({
+  settings,
+  minorDigitsLocked
+}: {
+  settings: EditableSettings
+  /** Financial data exists: the main process refuses other decimal places, so the field is read-only. */
+  minorDigitsLocked: boolean
+}): React.JSX.Element {
   const queryClient = useQueryClient()
   const form = useForm<SettingsFormInput, unknown, SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
@@ -62,9 +71,9 @@ export function SettingsForm({ settings }: { settings: EditableSettings }): Reac
 
   const save = useMutation({
     mutationFn: (patch: EditableSettingsPatch) => unwrap(window.api.settings.update(patch)),
-    onSuccess: (saved) => {
+    onSuccess: (saved: SettingsView) => {
       queryClient.setQueryData(queryKeys.settings, saved)
-      reset(toFormValues(saved))
+      reset(toFormValues(saved.values))
       toast.success('Settings saved.')
     },
     onError: (error) => {
@@ -152,7 +161,11 @@ export function SettingsForm({ settings }: { settings: EditableSettings }): Reac
           <Field
             id="minorDigits"
             label="Minor digits"
-            hint="Digits after the decimal point: 2 for Rs 10.50. Set it before you enter prices."
+            hint={
+              minorDigitsLocked
+                ? 'Locked: decimal places cannot change after financial data has been entered.'
+                : 'Digits after the decimal point: 2 for Rs 10.50. Set it before you enter prices.'
+            }
             error={errors.minorDigits?.message}
           >
             <Input
@@ -161,6 +174,12 @@ export function SettingsForm({ settings }: { settings: EditableSettings }): Reac
               inputMode="numeric"
               min={0}
               max={4}
+              // Read-only rather than disabled: React Hook Form leaves a disabled field's value out of the form.
+              readOnly={minorDigitsLocked}
+              aria-readonly={minorDigitsLocked || undefined}
+              className={
+                minorDigitsLocked ? 'cursor-not-allowed bg-muted text-muted-foreground' : undefined
+              }
               aria-invalid={errors.minorDigits ? true : undefined}
               {...register('minorDigits', { valueAsNumber: true })}
             />

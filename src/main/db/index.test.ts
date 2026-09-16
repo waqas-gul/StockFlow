@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { win32 } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { backupFolder } from '../data-paths'
@@ -158,6 +158,28 @@ describe('initializeDatabase', () => {
       'pre-migration',
       'pre-restore'
     ])
+  })
+
+  it('first removes temporary files an interrupted backup left in the backup folders, even if the database is refused', async () => {
+    const stale = win32.join(
+      backupFolder(ctx.paths, 'auto'),
+      'stockflow-backup_2026-09-13_220000_v1.0.0_s1.db.tmp'
+    )
+    mkdirSync(backupFolder(ctx.paths, 'auto'), { recursive: true })
+    writeFileSync(stale, 'half-written backup')
+    const yesterday = new Date(TEST_TIME.getTime() - 24 * 3600_000)
+    utimesSync(stale, yesterday, yesterday)
+    mkdirSync(ctx.paths.dataDir, { recursive: true })
+    writeFileSync(ctx.paths.databaseFile, 'not a database '.repeat(100))
+
+    await expect(initializeDatabase(ctx)).rejects.toMatchObject({
+      code: 'NOT_STOCKFLOW_DATABASE'
+    })
+
+    expect(existsSync(stale)).toBe(false)
+    expect(messages(ctx)[0]).toBe(
+      'INFO [backup] removed temporary files left by an interrupted backup'
+    )
   })
 
   it('logs the migration and the verified schema history', async () => {

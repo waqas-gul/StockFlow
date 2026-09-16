@@ -5,7 +5,12 @@ import { initializeDatabase } from './db'
 import type { Db } from './db/adapter'
 import type { DataSafetyContext } from './db/context'
 import { migrations } from './db/migrations'
-import { createBackupDialogs, openFolderInExplorer, relaunchApp } from './desktop'
+import {
+  createBackupDialogs,
+  createRecoveryDialogs,
+  openFolderInExplorer,
+  relaunchApp
+} from './desktop'
 import { registerIpc } from './ipc'
 import { createErrorRef, createFileLogger } from './logging'
 import { configureUserDataPath, getDataPaths } from './paths'
@@ -16,6 +21,11 @@ import { BackupService } from './services/backup.service'
 import { LiveDatabase } from './services/live-database'
 import { OperationLock } from './services/operation-lock'
 import { RestoreService } from './services/restore.service'
+import {
+  runStartupRecovery,
+  startupRecoveryReason,
+  type StartupRecoveryReason
+} from './services/startup-recovery'
 import { createMainWindow } from './window'
 
 // Order matters: the single-instance lock below is keyed on the userData path.
@@ -65,6 +75,37 @@ if (!app.requestSingleInstanceLock()) {
     }, RESTART_DELAY_MS)
   }
 
+  /** Recovery mode, then a relaunch after a restore attempt, or exit. */
+  const recoverAtStartup = async (
+    ctx: DataSafetyContext,
+    reason: StartupRecoveryReason,
+    ref: string
+  ): Promise<void> => {
+    try {
+      const outcome = await runStartupRecovery({
+        ctx,
+        dialogs: createRecoveryDialogs(),
+        status: new BackupStatusStore(paths, log),
+        reason,
+        ref
+      })
+      if (outcome === 'RELAUNCH') {
+        log.info('StockFlow restarts after recovery mode')
+        relaunchApp()
+        return
+      }
+    } catch (error) {
+      log.error('[recovery] recovery mode failed', error, { ref })
+      dialog.showErrorBox(
+        'StockFlow cannot start',
+        `The database could not be opened, and recovery mode stopped.
+
+Reference: ${ref} (the details are in the StockFlow log file).`
+      )
+    }
+    app.exit(1)
+  }
+
   app.on('second-instance', () => {
     // Started again while closing (during the shutdown backup): start again once this instance has quit.
     if (quitting) {
@@ -108,6 +149,12 @@ if (!app.requestSingleInstanceLock()) {
     } catch (error) {
       const ref = createErrorRef()
       log.error('[startup] the database could not be opened', error, { ref })
+      // A damaged or unverifiable database: recovery mode offers a restore (native dialogs, no window, no IPC).
+      const recoveryReason = startupRecoveryReason(error)
+      if (recoveryReason !== null) {
+        await recoverAtStartup(ctx, recoveryReason, ref)
+        return
+      }
       const reason = error instanceof Error ? error.message : String(error)
       dialog.showErrorBox(
         'StockFlow cannot start',

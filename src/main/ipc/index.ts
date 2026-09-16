@@ -8,7 +8,7 @@ import type { BackupService } from '../services/backup.service'
 import type { LiveDatabase } from '../services/live-database'
 import { integrityCheckReport } from '../services/maintenance.service'
 import type { RestoreService } from '../services/restore.service'
-import { readEditableSettings, updateEditableSettings } from '../services/settings.service'
+import { readSettingsView, updateSettingsView } from '../services/settings.service'
 import {
   registerIpcHandlers,
   type HandlerOptions,
@@ -44,10 +44,10 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       info: { input: NO_INPUT, run: () => readAppInfo({ ...deps.appInfo, db: database.get() }) }
     },
     settings: {
-      get: { input: NO_INPUT, run: () => readEditableSettings(database.get(), ctx.log) },
+      get: { input: NO_INPUT, run: () => readSettingsView(database.get(), ctx.log) },
       update: {
         input: EditableSettingsPatchSchema,
-        run: (patch) => updateEditableSettings(database.get(), patch)
+        run: (patch) => updateSettingsView(database.get(), patch)
       }
     },
     backup: {

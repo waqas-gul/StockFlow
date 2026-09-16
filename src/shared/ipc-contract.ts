@@ -2,7 +2,7 @@
 //
 // No runtime imports: the sandboxed preload bundles this file and cannot load packages such as Zod.
 // Input validation lives with each handler in the main process (src/main/ipc).
-import type { EditableSettings, EditableSettingsPatch } from './settings'
+import type { EditableSettingsPatch, SettingsView } from './settings'
 import type { AppInfo } from './types/app-info'
 import type {
   BackupStatus,
@@ -37,10 +37,10 @@ export const ipcContract = Object.freeze({
     info: call<void, AppInfo>()
   }),
   settings: Object.freeze({
-    /** The business, currency and invoice settings. */
-    get: call<void, EditableSettings>(),
-    /** Saves any of them (validated again by the main process) and returns them all. */
-    update: call<EditableSettingsPatch, EditableSettings>()
+    /** The business, currency and invoice settings, and whether the currency decimal places are locked. */
+    get: call<void, SettingsView>(),
+    /** Saves any of them (validated again by the main process) and returns them all, with the lock. */
+    update: call<EditableSettingsPatch, SettingsView>()
   }),
   backup: Object.freeze({
     /** Automatic and manual backup status. */

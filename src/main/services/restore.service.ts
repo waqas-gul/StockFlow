@@ -30,7 +30,8 @@ export const RESTORE_TOKEN_TTL_MS = 10 * 60 * 1000
 const UNEXPECTED_FAILURE =
   'The restore stopped unexpectedly. StockFlow restarts to open your data safely.'
 
-interface Fingerprint {
+/** A chosen backup file as it was checked: a different size or modification time means it changed since. */
+export interface Fingerprint {
   readonly size: number
   readonly modifiedMs: number
 }
@@ -203,7 +204,8 @@ export class RestoreService {
   }
 }
 
-function restoredMessage(outcome: Extract<RestoreOutcome, { ok: true }>): string {
+/** What the user is told (and backup-status.json records) about a completed restore. */
+export function restoredMessage(outcome: Extract<RestoreOutcome, { ok: true }>): string {
   const parts = ['The backup was restored.']
   if (outcome.migration.applied.length > 0) {
     parts.push('It was upgraded to this version of StockFlow.')
@@ -236,7 +238,7 @@ function rejected(message: string): AppFailure {
   return new AppFailure({ code: 'RESTORE_REJECTED', message })
 }
 
-function fingerprintOf(file: string): Fingerprint | null {
+export function fingerprintOf(file: string): Fingerprint | null {
   try {
     const stats = statSync(file)
     return stats.isFile() ? { size: stats.size, modifiedMs: stats.mtimeMs } : null
@@ -245,7 +247,7 @@ function fingerprintOf(file: string): Fingerprint | null {
   }
 }
 
-function sameFingerprint(a: Fingerprint, b: Fingerprint): boolean {
+export function sameFingerprint(a: Fingerprint, b: Fingerprint): boolean {
   return a.size === b.size && a.modifiedMs === b.modifiedMs
 }
 

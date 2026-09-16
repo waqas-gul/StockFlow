@@ -1,6 +1,7 @@
 import { errorCodeOf } from '../logging'
 import type { Db } from './adapter'
 import { ensureBackupFolders } from './backup'
+import { removeStaleBackupTempFiles } from './backup-cleanup'
 import { openDatabase } from './connection'
 import type { DataSafetyContext } from './context'
 import { checkSchemaHistory } from './integrity'
@@ -12,6 +13,7 @@ export { recordSchemaMigration, verifiedPreMigrationBackup } from './schema-upgr
 /**
  * Opens the app database and brings its schema up to date. Call it before any window or IPC handler exists.
  *
+ * 0. Temporary files that an interrupted backup left in StockFlow's backup folders are removed (never throws).
  * 1. A restore interrupted by a crash is rolled back, so an incomplete restore is never opened.
  * 2. The database is opened with verified connection pragmas and its StockFlow marker checked.
  * 3. Every applied migration's recorded checksum must match this app's (upgradeSchema). A mismatch refuses normal
@@ -26,6 +28,7 @@ export { recordSchemaMigration, verifiedPreMigrationBackup } from './schema-upgr
  * On failure the connection is closed and the error thrown.
  */
 export async function initializeDatabase(ctx: DataSafetyContext): Promise<Db> {
+  removeStaleBackupTempFiles(ctx)
   recoverInterruptedRestore(ctx.paths, ctx.log)
   const db = openDatabase(ctx.paths.databaseFile)
   try {

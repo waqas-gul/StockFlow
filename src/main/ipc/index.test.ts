@@ -2,9 +2,10 @@ import type { IpcMainInvokeEvent } from 'electron'
 import { existsSync, readdirSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ipcCalls } from '@shared/ipc-contract'
+import { MINOR_DIGITS_LOCKED_MESSAGE } from '@shared/settings'
 import type { Result } from '@shared/types/result'
 import { backupFolder } from '../data-paths'
-import { createTempDir, type TempDir } from '../db/test-utils'
+import { createTempDir, insertMasters, insertRow, rows, type TempDir } from '../db/test-utils'
 import { DEFAULT_SETTINGS, readSettings } from '../services/settings.service'
 import { createServicesFixture, type ServicesFixture } from '../services/test-utils'
 import { registerIpc } from './index'
@@ -125,8 +126,11 @@ describe('registerIpc', () => {
 })
 
 describe('settings', () => {
-  it('settings:get returns the business, currency and invoice settings only', async () => {
-    await expect(call('settings:get')).resolves.toEqual({ ok: true, data: EDITABLE_DEFAULTS })
+  it('settings:get returns the business, currency and invoice settings only, and the decimal places lock', async () => {
+    await expect(call('settings:get')).resolves.toEqual({
+      ok: true,
+      data: { values: EDITABLE_DEFAULTS, minorDigitsLocked: false }
+    })
   })
 
   it('settings:update validates again in the main process, saves, and returns the settings', async () => {
@@ -136,9 +140,40 @@ describe('settings', () => {
     })
     expect(result).toEqual({
       ok: true,
-      data: { ...EDITABLE_DEFAULTS, 'business.name': 'Ali Traders', 'invoice.paperSize': 'A5' }
+      data: {
+        values: { ...EDITABLE_DEFAULTS, 'business.name': 'Ali Traders', 'invoice.paperSize': 'A5' },
+        minorDigitsLocked: false
+      }
     })
     expect(readSettings(fixture.db)['business.name']).toBe('Ali Traders')
+  })
+
+  it('settings:update refuses other decimal places once financial data exists, but not a symbol or code', async () => {
+    insertRow(fixture.db, 'expenses', rows.expense(insertMasters(fixture.db)))
+    await expect(call('settings:get')).resolves.toMatchObject({
+      ok: true,
+      data: { minorDigitsLocked: true }
+    })
+
+    await expect(call('settings:update', { 'currency.minorDigits': 0 })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'SETTING_LOCKED',
+        message: MINOR_DIGITS_LOCKED_MESSAGE,
+        fieldErrors: { 'currency.minorDigits': [MINOR_DIGITS_LOCKED_MESSAGE] }
+      }
+    })
+    expect(readSettings(fixture.db)['currency.minorDigits']).toBe(2)
+
+    await expect(
+      call('settings:update', { 'currency.code': 'USD', 'currency.symbol': '$' })
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        values: { ...EDITABLE_DEFAULTS, 'currency.code': 'USD', 'currency.symbol': '$' },
+        minorDigitsLocked: true
+      }
+    })
   })
 
   it.each<[string, unknown, string]>([

@@ -16,12 +16,18 @@ const SETTINGS: EditableSettings = {
 }
 
 /** Server-renders the form: no effects run and window.api is never called. */
-function render(settings: EditableSettings = SETTINGS): string {
+function render(settings: EditableSettings = SETTINGS, minorDigitsLocked = false): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
-      <SettingsForm settings={settings} />
+      <SettingsForm settings={settings} minorDigitsLocked={minorDigitsLocked} />
     </QueryClientProvider>
   )
+}
+
+function inputTag(html: string, id: string): string {
+  const tag = new RegExp(`<input[^>]*id="${id}"[^>]*>`).exec(html)
+  if (tag === null) throw new Error(`No input ${id}`)
+  return tag[0]
 }
 
 function text(html: string): string {
@@ -60,6 +66,24 @@ describe('SettingsForm', () => {
     expect(text(html)).toContain('First invoice number: INV-000001')
     expect(html).toMatch(/aria-checked="true"[^>]*value="A5"|value="A5"[^>]*aria-checked="true"/)
     expect(html).toMatch(/aria-checked="false"[^>]*value="A4"|value="A4"[^>]*aria-checked="false"/)
+  })
+
+  it('lets the decimal places be edited while no financial data exists', () => {
+    const html = render()
+    expect(inputTag(html, 'minorDigits')).not.toMatch(/readonly/i)
+    expect(text(html)).not.toContain('Locked')
+  })
+
+  it('shows the decimal places read-only with the reason once financial data exists; code and symbol stay editable', () => {
+    const html = render(SETTINGS, true)
+    expect(inputTag(html, 'minorDigits')).toMatch(/readonly=""/i)
+    expect(inputTag(html, 'minorDigits')).toMatch(/aria-readonly="true"/)
+    expect(text(html)).toContain(
+      'Locked: decimal places cannot change after financial data has been entered.'
+    )
+    for (const id of ['currencyCode', 'currencySymbol']) {
+      expect(inputTag(html, id)).not.toMatch(/readonly/i)
+    }
   })
 
   it('offers Save only once something was changed', () => {

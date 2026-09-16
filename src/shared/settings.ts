@@ -63,6 +63,21 @@ export type EditableSettingKey = (typeof EDITABLE_SETTING_KEYS)[number]
 export type EditableSettings = Pick<Settings, EditableSettingKey>
 export type EditableSettingsPatch = Partial<EditableSettings>
 
+/** Why `currency.minorDigits` is refused once financial data exists. */
+export const MINOR_DIGITS_LOCKED_MESSAGE =
+  'Currency decimal places cannot be changed after financial data has been entered.'
+
+/** What `window.api.settings.get()` and `.update(...)` return. */
+export interface SettingsView {
+  readonly values: EditableSettings
+  /**
+   * True once any amount is stored (prices, costs, stock documents, invoices, payments, expenses or ledger entries).
+   * Amounts are stored as whole minor units, so changing `currency.minorDigits` would change their meaning: the main
+   * process then refuses it (SETTING_LOCKED), and the Settings screen shows the field read-only.
+   */
+  readonly minorDigitsLocked: boolean
+}
+
 /** The input of `window.api.settings.update(...)`: any subset of the editable settings. Any other key is refused. */
 export const EditableSettingsPatchSchema = z
   .strictObject({

@@ -7,11 +7,12 @@ import {
   type SaveDialogOptions
 } from 'electron'
 import type { BackupDialogs } from './services/backup.service'
+import type { RecoveryDialogs } from './services/startup-recovery'
 
 /*
- * The Electron side of Settings → Backup & Restore: the file dialogs, opening the backup folder and relaunching. Only
- * the main process calls these, with paths it chose itself; nothing here is reachable from the renderer except
- * through the fixed backup calls of the IPC contract.
+ * The Electron side of Settings → Backup & Restore and of recovery mode: the file dialogs, message boxes, opening the
+ * backup folder and relaunching. Only the main process calls these, with paths it chose itself; nothing here is
+ * reachable from the renderer except through the fixed backup calls of the IPC contract.
  */
 
 const BACKUP_FILTERS = [{ name: 'StockFlow backup', extensions: ['db'] }]
@@ -46,6 +47,29 @@ export function createBackupDialogs(getWindow: () => BrowserWindow | null): Back
         : await dialog.showOpenDialog(options)
       return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]
     }
+  }
+}
+
+/** The native dialogs of recovery mode (startup-recovery.ts). There is no window yet, so they have no parent. */
+export function createRecoveryDialogs(): RecoveryDialogs {
+  return {
+    async showMessage(message) {
+      const result = await dialog.showMessageBox({
+        type: message.type,
+        title: message.title,
+        message: message.message,
+        detail: message.detail,
+        buttons: [...message.buttons],
+        defaultId: message.defaultId,
+        cancelId: message.cancelId,
+        noLink: true,
+        ...(message.checkboxLabel === undefined
+          ? {}
+          : { checkboxLabel: message.checkboxLabel, checkboxChecked: false })
+      })
+      return { response: result.response, checkboxChecked: result.checkboxChecked }
+    },
+    chooseRestoreFile: createBackupDialogs(() => null).chooseRestoreFile
   }
 }
 

@@ -4,9 +4,13 @@ import {
   createMemoryLogger,
   createSchemaDatabase,
   createTempDir,
+  insertMasters,
   insertRow,
   isBetween,
+  rows,
   thrown,
+  type Masters,
+  type Row,
   type TempDir
 } from '../db/test-utils'
 import { AppFailure } from '../errors'
@@ -14,10 +18,13 @@ import {
   DEFAULT_SETTINGS,
   SETTING_KEYS,
   SettingsPatchSchema,
+  hasMonetaryData,
   readEditableSettings,
   readSettings,
+  readSettingsView,
   updateEditableSettings,
-  updateSettings
+  updateSettings,
+  updateSettingsView
 } from './settings.service'
 
 let temp: TempDir
@@ -309,5 +316,126 @@ describe('the Settings screen: readEditableSettings and updateEditableSettings',
     expect(
       validationFailure(() => updateEditableSettings(db, { [key]: value })).error.fieldErrors
     ).toEqual({ [key]: [message] })
+  })
+
+  it('readSettingsView adds whether the decimal places are locked', () => {
+    expect(readSettingsView(db)).toEqual({ values: EDITABLE, minorDigitsLocked: false })
+    insertRow(db, 'expenses', rows.expense(insertMasters(db)))
+    expect(readSettingsView(db)).toEqual({ values: EDITABLE, minorDigitsLocked: true })
+  })
+
+  it('updateSettingsView saves the change and returns the settings with the lock', () => {
+    expect(updateSettingsView(db, { 'currency.symbol': 'PKR' })).toEqual({
+      values: { ...EDITABLE, 'currency.symbol': 'PKR' },
+      minorDigitsLocked: false
+    })
+  })
+})
+
+describe('currency.minorDigits is locked once financial data exists', () => {
+  const LOCKED = {
+    code: 'SETTING_LOCKED',
+    message: 'Currency decimal places cannot be changed after financial data has been entered.',
+    fieldErrors: {
+      'currency.minorDigits': [
+        'Currency decimal places cannot be changed after financial data has been entered.'
+      ]
+    }
+  }
+
+  /** Master data whose units have no price or cost: not financial data. */
+  function pricelessMasters(): Masters {
+    const m = insertMasters(db)
+    db.run(
+      'UPDATE product_units SET wholesale_price_minor = NULL, retail_price_minor = NULL, default_cost_minor = NULL'
+    )
+    return m
+  }
+
+  /** Inserts a row whose parents do not exist, as only the table itself is under test. */
+  function insertOrphan(table: string, row: Row): void {
+    db.exec('PRAGMA foreign_keys = OFF')
+    try {
+      insertRow(db, table, row)
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON')
+    }
+  }
+
+  it('is not locked in a new database: the seeded settings, walk-in customer and expense categories hold no amounts', () => {
+    expect(hasMonetaryData(db)).toBe(false)
+  })
+
+  it('may change while there is no financial data, even with companies, products, units and customers', () => {
+    pricelessMasters()
+    expect(hasMonetaryData(db)).toBe(false)
+    expect(updateEditableSettings(db, { 'currency.minorDigits': 0 })).toMatchObject({
+      'currency.minorDigits': 0
+    })
+    expect(updateSettings(db, { 'currency.minorDigits': 3 })['currency.minorDigits']).toBe(3)
+    expect(stored('currency.minorDigits')).toBe('3')
+  })
+
+  it.each<[string, (m: Masters) => void]>([
+    [
+      'a retail price',
+      (m) => db.run('UPDATE product_units SET retail_price_minor = 11000 WHERE id = ?', [m.pieceId])
+    ],
+    [
+      'a wholesale price',
+      (m) => db.run('UPDATE product_units SET wholesale_price_minor = 0 WHERE id = ?', [m.boxId])
+    ],
+    [
+      'a default cost',
+      (m) => db.run('UPDATE product_units SET default_cost_minor = 9000 WHERE id = ?', [m.pieceId])
+    ],
+    ['a stock receipt', () => insertRow(db, 'stock_receipts', rows.receipt())],
+    ['a stock receipt line', (m) => insertOrphan('stock_receipt_items', rows.receiptItem(m, 99))],
+    ['a stock adjustment', (m) => insertRow(db, 'stock_adjustments', rows.adjustment(m))],
+    [
+      'a stock movement',
+      (m) => insertOrphan('stock_movements', rows.movement(m, { receipt_item_id: 99 }))
+    ],
+    ['an invoice', (m) => insertRow(db, 'invoices', rows.invoice(m))],
+    ['an invoice line', (m) => insertOrphan('invoice_items', rows.invoiceItem(m, 99))],
+    [
+      'an invoice line quantity',
+      (m) => insertOrphan('invoice_item_quantities', rows.quantity(99, m.boxId))
+    ],
+    ['a payment', (m) => insertRow(db, 'payments', rows.payment(m))],
+    ['an expense', (m) => insertRow(db, 'expenses', rows.expense(m))],
+    ['a customer ledger entry', (m) => insertRow(db, 'customer_ledger', rows.ledger(m))]
+  ])('is locked once there is %s: the change is refused and nothing is saved', (_label, insert) => {
+    insert(pricelessMasters())
+    expect(hasMonetaryData(db)).toBe(true)
+    const before = allRows()
+
+    const failure = validationFailure(() =>
+      updateEditableSettings(db, { 'business.name': 'Ali Traders', 'currency.minorDigits': 0 })
+    )
+
+    expect(failure.error).toEqual(LOCKED)
+    expect(allRows()).toEqual(before)
+  })
+
+  it('refuses the change through updateSettings as well', () => {
+    insertRow(db, 'stock_receipts', rows.receipt())
+    expect(
+      validationFailure(() => updateSettings(db, { 'currency.minorDigits': 4 })).error
+    ).toEqual(LOCKED)
+    expect(stored('currency.minorDigits')).toBe('2')
+  })
+
+  it('still accepts the current number of decimal places, and a currency code or symbol change', () => {
+    insertRow(db, 'stock_receipts', rows.receipt())
+    expect(
+      updateEditableSettings(db, {
+        'currency.minorDigits': 2,
+        'currency.code': 'USD',
+        'currency.symbol': '$'
+      })
+    ).toMatchObject({ 'currency.minorDigits': 2, 'currency.code': 'USD', 'currency.symbol': '$' })
+    expect(stored('currency.code')).toBe('"USD"')
+    expect(stored('currency.symbol')).toBe('"$"')
   })
 })
