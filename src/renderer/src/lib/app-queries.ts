@@ -1,5 +1,28 @@
-import { keepPreviousData, queryOptions, type UseQueryOptions } from '@tanstack/react-query'
-import type { Product, ProductListInput, ProductListPage } from '@shared/products'
+import {
+  keepPreviousData,
+  queryOptions,
+  type QueryClient,
+  type UseQueryOptions
+} from '@tanstack/react-query'
+import type {
+  Product,
+  ProductListInput,
+  ProductListPage,
+  ProductSearchInput,
+  ProductSearchItem
+} from '@shared/products'
+import type {
+  AdjustmentListInput,
+  PostingFloor,
+  ReceiptListInput,
+  StockAdjustmentSummary,
+  StockCard,
+  StockCardInput,
+  StockPage,
+  StockReceiptDetail,
+  StockReceiptSummary,
+  StockSummary
+} from '@shared/stock'
 import { unwrap } from './api'
 import { queryKeys } from './query-keys'
 
@@ -57,4 +80,118 @@ export function productQuery(
     queryFn: () => unwrap(window.api.products.get(id)),
     staleTime: 0
   })
+}
+
+/** `window.api.products.search(...)`: quick product lookup for the stock forms. */
+export function productSearchQuery(
+  input: ProductSearchInput
+): UseQueryOptions<
+  readonly ProductSearchItem[],
+  Error,
+  readonly ProductSearchItem[],
+  ReturnType<typeof queryKeys.products.search>
+> {
+  return queryOptions({
+    queryKey: queryKeys.products.search(input),
+    queryFn: () => unwrap(window.api.products.search(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.stock.listReceipts(...)`: receipt history, newest first. */
+export function receiptListQuery(
+  input: ReceiptListInput
+): UseQueryOptions<
+  StockPage<StockReceiptSummary>,
+  Error,
+  StockPage<StockReceiptSummary>,
+  ReturnType<typeof queryKeys.stock.receipts>
+> {
+  return queryOptions({
+    queryKey: queryKeys.stock.receipts(input),
+    queryFn: () => unwrap(window.api.stock.listReceipts(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.stock.getReceipt(id)`: always read fresh (whether it can be voided depends on later activity). */
+export function receiptQuery(
+  id: number
+): UseQueryOptions<
+  StockReceiptDetail,
+  Error,
+  StockReceiptDetail,
+  ReturnType<typeof queryKeys.stock.receipt>
+> {
+  return queryOptions({
+    queryKey: queryKeys.stock.receipt(id),
+    queryFn: () => unwrap(window.api.stock.getReceipt(id)),
+    staleTime: 0
+  })
+}
+
+/** `window.api.stock.listAdjustments(...)`: adjustment history, newest first. */
+export function adjustmentListQuery(
+  input: AdjustmentListInput
+): UseQueryOptions<
+  StockPage<StockAdjustmentSummary>,
+  Error,
+  StockPage<StockAdjustmentSummary>,
+  ReturnType<typeof queryKeys.stock.adjustments>
+> {
+  return queryOptions({
+    queryKey: queryKeys.stock.adjustments(input),
+    queryFn: () => unwrap(window.api.stock.listAdjustments(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.stock.stockCard(...)`: one page of a product's movements with running totals. */
+export function stockCardQuery(
+  input: StockCardInput
+): UseQueryOptions<StockCard, Error, StockCard, ReturnType<typeof queryKeys.stock.card>> {
+  return queryOptions({
+    queryKey: queryKeys.stock.card(input),
+    queryFn: () => unwrap(window.api.stock.stockCard(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.stock.summary(productId)`: current quantity and value. */
+export function stockSummaryQuery(
+  productId: number
+): UseQueryOptions<StockSummary, Error, StockSummary, ReturnType<typeof queryKeys.stock.summary>> {
+  return queryOptions({
+    queryKey: queryKeys.stock.summary(productId),
+    queryFn: () => unwrap(window.api.stock.summary(productId)),
+    staleTime: 0
+  })
+}
+
+/** `window.api.stock.postingFloor(...)`: the allowed date range for a stock document of these products. */
+export function postingFloorQuery(
+  productIds: readonly number[]
+): UseQueryOptions<
+  PostingFloor,
+  Error,
+  PostingFloor,
+  ReturnType<typeof queryKeys.stock.postingFloor>
+> {
+  return queryOptions({
+    queryKey: queryKeys.stock.postingFloor(productIds),
+    queryFn: () => unwrap(window.api.stock.postingFloor({ productIds: [...productIds] })),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/**
+ * After a receipt, void or adjustment: stock figures, product lists (stock and unit locks) and settings (the currency
+ * decimal places lock once financial data exists) are read again.
+ */
+export function refreshAfterStockChange(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.stock.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.products.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
 }

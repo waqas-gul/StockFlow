@@ -65,9 +65,10 @@ describe('production migrations', () => {
     expect(() => validateMigrations(migrations)).not.toThrow()
   })
 
-  it('contain only the V1 schema, 0001_initial, as schema version 1', () => {
+  it('are 0001_initial and 0002_stock_adjustment_receipt_item, in order', () => {
     expect(migrations.map((migration) => [migration.version, migration.name])).toEqual([
-      [1, '0001_initial']
+      [1, '0001_initial'],
+      [2, '0002_stock_adjustment_receipt_item']
     ])
   })
 })
@@ -81,20 +82,25 @@ describe('initializeDatabase', () => {
     expect(readConnectionPragmas(db)).toEqual(CONNECTION_PRAGMAS)
   })
 
-  it('records the applied migration in schema_migrations with the app version and checksum', async () => {
+  it('records each applied migration in schema_migrations with the app version and checksum', async () => {
     const before = new Date().toISOString()
     const db = temp.track(await initializeDatabase(ctx))
     const after = new Date().toISOString()
-    const [row, ...others] = schemaMigrations(db)
-    expect(others).toEqual([])
-    expect(row).toMatchObject({
-      version: 1,
-      name: '0001_initial',
-      app_version: TEST_APP_VERSION,
-      checksum: migrations[0].checksum
-    })
-    expect(row.applied_at).toMatch(ISO_UTC)
-    expect(isBetween(row.applied_at, before, after)).toBe(true)
+    const recorded = schemaMigrations(db)
+    expect(recorded).toEqual(
+      migrations.map((migration) =>
+        expect.objectContaining({
+          version: migration.version,
+          name: migration.name,
+          app_version: TEST_APP_VERSION,
+          checksum: migration.checksum
+        })
+      )
+    )
+    for (const row of recorded) {
+      expect(row.applied_at).toMatch(ISO_UTC)
+      expect(isBetween(row.applied_at, before, after)).toBe(true)
+    }
   })
 
   it('opens the same database again without migrating or seeding it again', async () => {
@@ -104,7 +110,7 @@ describe('initializeDatabase', () => {
     first.close()
 
     const again = temp.track(await initializeDatabase(testContext(temp, { appVersion: '9.9.9' })))
-    expect(readUserVersion(again)).toBe(1)
+    expect(readUserVersion(again)).toBe(migrations.length)
     expect(schemaMigrations(again)).toEqual(firstRows)
     expect(again.all('SELECT * FROM customers')).toEqual(firstCustomers)
   })
@@ -138,7 +144,7 @@ describe('initializeDatabase', () => {
 
     const db = temp.track(await initializeDatabase(ctx))
 
-    expect(readUserVersion(db)).toBe(1)
+    expect(readUserVersion(db)).toBe(migrations.length)
     expect(db.all('SELECT v FROM probe')).toEqual([{ v: 'kept' }])
     const [backup] = readdirSync(backupFolder(ctx.paths, 'pre-migration')).filter((name) =>
       name.endsWith('.db')
@@ -190,13 +196,19 @@ describe('initializeDatabase', () => {
       'INFO [startup] database ready',
       'INFO [startup] schema history verified'
     ])
-    expect(ctx.log.entries[2].context).toEqual({ schema: 1, migrated: 1 })
+    expect(ctx.log.entries[2].context).toEqual({
+      schema: migrations.length,
+      migrated: migrations.length
+    })
   })
 
   it('refuses normal startup when an applied migration has a different checksum, and changes nothing', async () => {
     temp.track(await initializeDatabase(ctx)).close()
     const before = fileHash(ctx.paths.databaseFile)
-    const changed: Migration[] = [{ ...initialMigration, checksum: OTHER_CHECKSUM }]
+    const changed: Migration[] = [
+      { ...initialMigration, checksum: OTHER_CHECKSUM },
+      ...migrations.slice(1)
+    ]
     const reopen = testContext(temp, { migrations: changed })
 
     const error = await initializeDatabase(reopen).then(
@@ -232,7 +244,9 @@ describe('initializeDatabase', () => {
     // The file was released and not changed: the recorded checksum is never "corrected".
     expect(fileHash(ctx.paths.databaseFile)).toBe(before)
     const check = temp.track(openSqlite(ctx.paths.databaseFile, { readonly: true }))
-    expect(schemaMigrations(check).map((row) => row.checksum)).toEqual([initialMigration.checksum])
+    expect(schemaMigrations(check).map((row) => row.checksum)).toEqual(
+      migrations.map((migration) => migration.checksum)
+    )
   })
 
   it('shows the user a safe message and puts the technical detail in the cause', () => {
@@ -253,7 +267,7 @@ describe('initializeDatabase', () => {
   it('still opens the database when only the recorded name differs: a warning, not a refusal', async () => {
     temp.track(await initializeDatabase(ctx)).close()
     const renamed = testContext(temp, {
-      migrations: [{ ...initialMigration, name: '0001_renamed' }]
+      migrations: [{ ...initialMigration, name: '0001_renamed' }, ...migrations.slice(1)]
     })
     const db = temp.track(await initializeDatabase(renamed))
     expect(db.isOpen).toBe(true)
@@ -279,7 +293,7 @@ describe('initializeDatabase', () => {
         level: 'WARN',
         context: {
           issues: 1,
-          detail: 'schema_migrations records versions none, but the schema version is 1.'
+          detail: `schema_migrations records versions none, but the schema version is ${migrations.length}.`
         }
       })
     )
@@ -314,16 +328,16 @@ describe('recordSchemaMigration', () => {
     const db = temp.track(await initializeDatabase(ctx))
     const sql = 'CREATE TABLE fixture_later (id INTEGER PRIMARY KEY) STRICT'
     const later: Migration = {
-      version: 2,
-      name: '0002_fixture_later',
+      version: migrations.length + 1,
+      name: '9999_fixture_later',
       checksum: sqlChecksum(sql),
       up: (target) => target.exec(sql)
     }
     db.transaction(() => recordSchemaMigration('2.0.0')(db, later))
-    const row = schemaMigrations(db)[1]
+    const row = schemaMigrations(db)[migrations.length]
     expect(row).toMatchObject({
-      version: 2,
-      name: '0002_fixture_later',
+      version: migrations.length + 1,
+      name: '9999_fixture_later',
       app_version: '2.0.0',
       checksum: sqlChecksum(sql)
     })

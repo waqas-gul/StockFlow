@@ -16,7 +16,7 @@ import {
 import { SetActiveSchema } from '@shared/validation'
 import type { Db, SqlValue } from '../db/adapter'
 import { AppFailure, parseInput } from '../errors'
-import { readSettings } from './settings.service'
+import { assertCurrencyDigits } from './settings.service'
 
 /*
  * Products and their units over `products`, `product_units` and `v_product_stock` (plan §7.3, §9.2).
@@ -289,16 +289,6 @@ function hasStockMovements(db: Db, productId: number): boolean {
       [productId]
     )?.found === 1
   )
-}
-
-function assertCurrencyDigits(db: Db, minorDigits: number): void {
-  if (readSettings(db)['currency.minorDigits'] !== minorDigits) {
-    throw new AppFailure({
-      code: 'CONFLICT',
-      message:
-        'The currency settings changed while the form was open. Close the form and try again.'
-    })
-  }
 }
 
 /** A new or changed company must exist and be active; a product may keep a company that became inactive. */

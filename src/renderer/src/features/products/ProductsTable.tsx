@@ -1,4 +1,4 @@
-import { Pencil, Power, PowerOff } from 'lucide-react'
+import { ClipboardList, Pencil, Power, PowerOff } from 'lucide-react'
 import type { ProductListItem } from '@shared/products'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow
 } from '@renderer/components/ui/table'
+import { isLowStock } from '../stock/stock-display'
 import { priceSummary, stockText, type CurrencyFormat } from './product-display'
 
 export interface ProductsTableProps {
@@ -19,6 +20,8 @@ export interface ProductsTableProps {
   readonly busyId: number | null
   readonly onEdit: (id: number) => void
   readonly onToggleActive: (item: ProductListItem) => void
+  /** Opens the product's stock card. */
+  readonly onStockCard: (id: number) => void
 }
 
 /** The Products table: one row per product, with a compact price per tier. */
@@ -27,7 +30,8 @@ export function ProductsTable({
   currency,
   busyId,
   onEdit,
-  onToggleActive
+  onToggleActive,
+  onStockCard
 }: ProductsTableProps): React.JSX.Element {
   return (
     <Table>
@@ -69,7 +73,18 @@ export function ProductsTable({
             <TableCell>
               {item.packingLabel ?? <span className="text-muted-foreground">—</span>}
             </TableCell>
-            <TableCell>{stockText(item)}</TableCell>
+            <TableCell>
+              <span className="tabular-nums">{stockText(item)}</span>
+              {isLowStock(item) && (
+                <Badge
+                  variant="warning"
+                  className="ml-1.5"
+                  title={`At or below the low-stock level of ${item.lowStockThresholdBase.toLocaleString('en-US')} base units.`}
+                >
+                  Low
+                </Badge>
+              )}
+            </TableCell>
             <TableCell>
               <PriceCell item={item} tier="wholesale" currency={currency} />
             </TableCell>
@@ -85,6 +100,10 @@ export function ProductsTable({
             </TableCell>
             <TableCell className="pr-4 text-right">
               <div className="flex justify-end gap-1">
+                <Button variant="ghost" size="sm" onClick={() => onStockCard(item.id)}>
+                  <ClipboardList aria-hidden />
+                  Stock Card
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

@@ -40,7 +40,16 @@ describe('createApi (the preload bridge)', () => {
       'products:create:function',
       'products:update:function',
       'products:setActive:function',
-      'products:search:function'
+      'products:search:function',
+      'stock:receive:function',
+      'stock:listReceipts:function',
+      'stock:getReceipt:function',
+      'stock:voidReceipt:function',
+      'stock:adjust:function',
+      'stock:listAdjustments:function',
+      'stock:stockCard:function',
+      'stock:summary:function',
+      'stock:postingFloor:function'
     ])
   })
 

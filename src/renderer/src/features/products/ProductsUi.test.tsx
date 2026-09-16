@@ -143,6 +143,7 @@ describe('ProductsTable', () => {
           busyId={null}
           onEdit={() => {}}
           onToggleActive={() => {}}
+          onStockCard={() => {}}
         />
       )
     )
@@ -150,8 +151,8 @@ describe('ProductsTable', () => {
       'Code Product Company Packing Stock Wholesale Retail Status Actions',
       'P-001 Tea 950g Piece · Box Old Brand (inactive) 1*12*18 0 Piece',
       'Rs 10.00 / Piece +1 more unit',
-      '— Active Edit Deactivate',
-      'S-9 Sugar Piece — — 0 Piece — Rs 0.00 / Piece Inactive Edit Activate'
+      '— Active Stock Card Edit Deactivate',
+      'S-9 Sugar Piece — — 0 Piece — Rs 0.00 / Piece Inactive Stock Card Edit Activate'
     ]) {
       expect(shown).toContain(expected)
     }

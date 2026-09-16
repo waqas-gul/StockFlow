@@ -13,6 +13,7 @@ import { restoreFilesOf } from '../db/restore'
 import {
   TEST_TIME,
   corruptIndex,
+  LATEST_SCHEMA_VERSION,
   createTempDir,
   editDatabaseFile,
   fileHash,
@@ -331,7 +332,7 @@ describe('runStartupRecovery', () => {
         `Backup: ${win32.basename(backup)}`,
         'Backup date: 2026-09-14 15:30',
         'StockFlow version: 1.0.0-test',
-        'Schema version: 1',
+        `Schema version: ${LATEST_SCHEMA_VERSION}`,
         'Products: 1',
         'Customers: 1',
         'Invoices: 0',
@@ -353,7 +354,7 @@ describe('runStartupRecovery', () => {
     // The relaunched StockFlow opens the restored database normally.
     const reopened = temp.track(await initializeDatabase(ctx))
     expect(readSettings(reopened)['business.name']).toBe('Backup Shop')
-    expect(readUserVersion(reopened)).toBe(1)
+    expect(readUserVersion(reopened)).toBe(LATEST_SCHEMA_VERSION)
     const [preserved, ...others] = listing(ctx.paths.recoveryDir)
     expect(others).toEqual([])
     expect(preserved).toMatch(/^damaged-live-db_.*\.db$/)

@@ -18,6 +18,23 @@ import type {
   ProductUpdateInput
 } from './products'
 import type { EditableSettingsPatch, SettingsView } from './settings'
+import type {
+  AdjustmentListInput,
+  PostingFloor,
+  PostingFloorInput,
+  ReceiptListInput,
+  ReceiptVoidInput,
+  StockAdjustmentInput,
+  StockAdjustmentResult,
+  StockAdjustmentSummary,
+  StockCard,
+  StockCardInput,
+  StockPage,
+  StockReceiptDetail,
+  StockReceiptInput,
+  StockReceiptSummary,
+  StockSummary
+} from './stock'
 import type { AppInfo } from './types/app-info'
 import type {
   BackupStatus,
@@ -49,17 +66,26 @@ const CHANNELS = [
   'products:create',
   'products:update',
   'products:setActive',
-  'products:search'
+  'products:search',
+  'stock:receive',
+  'stock:listReceipts',
+  'stock:getReceipt',
+  'stock:voidReceipt',
+  'stock:adjust',
+  'stock:listAdjustments',
+  'stock:stockCard',
+  'stock:summary',
+  'stock:postingFloor'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B and 5 calls', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5 and 6 calls', () => {
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
-      domain: 'products',
-      action: 'search',
-      channel: 'products:search'
+      domain: 'stock',
+      action: 'postingFloor',
+      channel: 'stock:postingFloor'
     })
   })
 
@@ -81,7 +107,7 @@ describe('IPC contract', () => {
   it('types window.api from the contract', () => {
     expectTypeOf<IpcChannel>().toEqualTypeOf<(typeof CHANNELS)[number]>()
     expectTypeOf<keyof StockFlowApi>().toEqualTypeOf<
-      'app' | 'settings' | 'backup' | 'maintenance' | 'companies' | 'products'
+      'app' | 'settings' | 'backup' | 'maintenance' | 'companies' | 'products' | 'stock'
     >()
     expectTypeOf<StockFlowApi['app']['info']>().toEqualTypeOf<() => Promise<Result<AppInfo>>>()
     expectTypeOf<StockFlowApi['settings']['get']>().toEqualTypeOf<
@@ -137,6 +163,33 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['products']['search']>().toEqualTypeOf<
       (input: ProductSearchInput) => Promise<Result<readonly ProductSearchItem[]>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['receive']>().toEqualTypeOf<
+      (input: StockReceiptInput) => Promise<Result<StockReceiptDetail>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['listReceipts']>().toEqualTypeOf<
+      (input: ReceiptListInput) => Promise<Result<StockPage<StockReceiptSummary>>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['getReceipt']>().toEqualTypeOf<
+      (input: number) => Promise<Result<StockReceiptDetail>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['voidReceipt']>().toEqualTypeOf<
+      (input: ReceiptVoidInput) => Promise<Result<StockReceiptDetail>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['adjust']>().toEqualTypeOf<
+      (input: StockAdjustmentInput) => Promise<Result<StockAdjustmentResult>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['listAdjustments']>().toEqualTypeOf<
+      (input: AdjustmentListInput) => Promise<Result<StockPage<StockAdjustmentSummary>>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['stockCard']>().toEqualTypeOf<
+      (input: StockCardInput) => Promise<Result<StockCard>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['summary']>().toEqualTypeOf<
+      (input: number) => Promise<Result<StockSummary>>
+    >()
+    expectTypeOf<StockFlowApi['stock']['postingFloor']>().toEqualTypeOf<
+      (input: PostingFloorInput) => Promise<Result<PostingFloor>>
     >()
   })
 })

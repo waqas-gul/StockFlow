@@ -14,6 +14,23 @@ import type {
   ProductUpdateInput
 } from './products'
 import type { EditableSettingsPatch, SettingsView } from './settings'
+import type {
+  AdjustmentListInput,
+  PostingFloor,
+  PostingFloorInput,
+  ReceiptListInput,
+  ReceiptVoidInput,
+  StockAdjustmentInput,
+  StockAdjustmentResult,
+  StockAdjustmentSummary,
+  StockCard,
+  StockCardInput,
+  StockPage,
+  StockReceiptDetail,
+  StockReceiptInput,
+  StockReceiptSummary,
+  StockSummary
+} from './stock'
 import type { AppInfo } from './types/app-info'
 import type {
   BackupStatus,
@@ -92,6 +109,26 @@ export const ipcContract = Object.freeze({
     setActive: call<SetActiveInput, ProductActiveResult>(),
     /** Quick lookup by code, name or company name. */
     search: call<ProductSearchInput, readonly ProductSearchItem[]>()
+  }),
+  stock: Object.freeze({
+    /** Posts a Stock In receipt (one transaction; a repeated request id returns the saved receipt). */
+    receive: call<StockReceiptInput, StockReceiptDetail>(),
+    /** Receipt history, newest first. */
+    listReceipts: call<ReceiptListInput, StockPage<StockReceiptSummary>>(),
+    /** One receipt with its lines, void state and corrections. */
+    getReceipt: call<number, StockReceiptDetail>(),
+    /** Voids a receipt no later stock activity has touched. */
+    voidReceipt: call<ReceiptVoidInput, StockReceiptDetail>(),
+    /** Posts one stock adjustment (opening stock, damage, corrections, ...). */
+    adjust: call<StockAdjustmentInput, StockAdjustmentResult>(),
+    /** Adjustment history, newest first. */
+    listAdjustments: call<AdjustmentListInput, StockPage<StockAdjustmentSummary>>(),
+    /** One page of a product's stock movements with running totals. */
+    stockCard: call<StockCardInput, StockCard>(),
+    /** A product's current stock quantity and value. */
+    summary: call<number, StockSummary>(),
+    /** The earliest and latest date a stock document for these products may have. */
+    postingFloor: call<PostingFloorInput, PostingFloor>()
   })
 })
 

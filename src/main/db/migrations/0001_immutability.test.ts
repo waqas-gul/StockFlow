@@ -13,6 +13,7 @@ import {
   type Row,
   type TempDir
 } from '../test-utils'
+import { initialMigration } from './0001_initial'
 
 // SQLite itself must refuse these changes: the rules do not rely on service code.
 
@@ -28,7 +29,7 @@ let ledgerId: number
 
 beforeEach(async () => {
   temp = createTempDir()
-  db = await createSchemaDatabase(temp)
+  db = await createSchemaDatabase(temp, [initialMigration])
   m = insertMasters(db)
   d = insertDocuments(db, m)
   insertRow(db, 'stock_movements', rows.movement(m, { receipt_item_id: d.receiptItemId }))

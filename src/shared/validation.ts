@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isCalendarDate } from './dates'
 
 /*
  * Small Zod building blocks shared by the business input schemas (settings, companies, products). Messages are plain
@@ -49,6 +50,19 @@ export const MinorAmountSchema = z
   .min(0, 'The amount cannot be negative.')
   .max(Number.MAX_SAFE_INTEGER, 'The amount is too large.')
   .nullable()
+
+/** A business date: 'YYYY-MM-DD', a real calendar day. */
+export const DateSchema = z
+  .string({ error: 'Enter the date.' })
+  .refine(isCalendarDate, 'Enter a valid date.')
+
+/**
+ * The id the renderer creates once per form submission (a UUID). A retry of the same submission sends it again, and
+ * the main process then returns the document it already saved instead of saving a second one.
+ */
+export const RequestIdSchema = z
+  .string({ error: 'The request is not valid.' })
+  .regex(/^[A-Za-z0-9-]{8,64}$/, 'The request is not valid.')
 
 /** `{ id, active }`: activate or deactivate a record. */
 export const SetActiveSchema = z.strictObject({ id: IdSchema, active: z.boolean() })

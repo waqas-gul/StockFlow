@@ -65,11 +65,11 @@ function statuses(result: IntegrityReport): Record<string, string> {
 }
 
 describe('runIntegrityCheck: a healthy database', () => {
-  it('reports OK for a new schema-1 database, listing every check', () => {
+  it('reports OK for a new database at the latest schema, listing every check', () => {
     const result = report()
     expect(result.status).toBe('OK')
     expect(result.checkedAt).toBe(CHECKED_AT)
-    expect(result.schemaVersion).toBe(1)
+    expect(result.schemaVersion).toBe(migrations.length)
     expect(result.checks.map((item) => item.id)).toEqual(CHECK_IDS)
     for (const item of result.checks) {
       expect(item).toMatchObject({ status: 'OK', issues: [] })
@@ -148,7 +148,7 @@ describe('runIntegrityCheck: database-level problems', () => {
 describe('runIntegrityCheck: schema', () => {
   it('detects a migration checksum mismatch, and reports it without changing the recorded one', () => {
     const history = check(
-      report(db, [{ ...initialMigration, checksum: OTHER_CHECKSUM }]),
+      report(db, [{ ...initialMigration, checksum: OTHER_CHECKSUM }, ...migrations.slice(1)]),
       'schema.history'
     )
     expect(history.status).toBe('ERROR')
@@ -156,14 +156,14 @@ describe('runIntegrityCheck: schema', () => {
       `Migration 0001_initial was applied with checksum ${initialMigration.checksum}, but this version of ` +
         `StockFlow has ${OTHER_CHECKSUM}: the schema may have been changed outside StockFlow.`
     ])
-    expect(db.all('SELECT checksum FROM schema_migrations')).toEqual([
-      { checksum: initialMigration.checksum }
-    ])
+    expect(db.all('SELECT checksum FROM schema_migrations ORDER BY version')).toEqual(
+      migrations.map((migration) => ({ checksum: migration.checksum }))
+    )
   })
 
   it('detects a migration recorded under another name', () => {
     const history = check(
-      report(db, [{ ...initialMigration, name: '0001_other' }]),
+      report(db, [{ ...initialMigration, name: '0001_other' }, ...migrations.slice(1)]),
       'schema.history'
     )
     expect(history.issues).toEqual([
@@ -172,15 +172,18 @@ describe('runIntegrityCheck: schema', () => {
   })
 
   it('detects a schema version that schema_migrations does not agree with', () => {
-    db.exec('PRAGMA user_version = 2')
+    const newer = migrations.length + 1
+    db.exec(`PRAGMA user_version = ${newer}`)
     const result = report()
     expect(check(result, 'database.schema-version')).toMatchObject({
       status: 'ERROR',
-      summary: expect.stringMatching(/schema 2, newer than/)
+      summary: expect.stringContaining(`schema ${newer}, newer than`)
     })
     expect(check(result, 'schema.history')).toMatchObject({
       status: 'ERROR',
-      issues: ['schema_migrations records versions 1, but the schema version is 2.']
+      issues: [
+        `schema_migrations records versions ${migrations.map((item) => item.version).join(', ')}, but the schema version is ${newer}.`
+      ]
     })
   })
 
@@ -193,12 +196,14 @@ describe('runIntegrityCheck: schema', () => {
     db.exec('DROP TRIGGER trg_schema_migrations_no_delete; DELETE FROM schema_migrations')
     expect(check(report(), 'schema.history')).toMatchObject({
       status: 'ERROR',
-      issues: ['schema_migrations records versions none, but the schema version is 1.']
+      issues: [
+        `schema_migrations records versions none, but the schema version is ${migrations.length}.`
+      ]
     })
   })
 
   it('reports pending migrations as a warning', () => {
-    const later = fixtureMigration(2, '0002_fixture_later', 'SELECT 1')
+    const later = fixtureMigration(migrations.length + 1, '9999_fixture_later', 'SELECT 1')
     const result = report(db, [...migrations, later])
     expect(check(result, 'database.schema-version').status).toBe('WARNING')
     expect(result.status).toBe('WARNING')
@@ -301,7 +306,8 @@ describe('runIntegrityCheck: inventory', () => {
         quantity: null,
         qty_base: 0,
         value_minor: 500000,
-        receipt_id: d.receiptId
+        receipt_id: d.receiptId,
+        receipt_item_id: d.receiptItemId
       })
     )
     insertRow(
@@ -449,9 +455,12 @@ describe('runIntegrityCheck: details', () => {
 
   it('reports a recorded migration this version of StockFlow does not know', () => {
     const result = report(db, [])
-    expect(check(result, 'schema.history').issues).toEqual([
-      'Migration 1 (0001_initial) is newer than this version of StockFlow.'
-    ])
+    expect(check(result, 'schema.history').issues).toEqual(
+      migrations.map(
+        (migration) =>
+          `Migration ${migration.version} (${migration.name}) is newer than this version of StockFlow.`
+      )
+    )
     expect(check(result, 'database.schema-version').status).toBe('ERROR')
   })
 })
@@ -462,7 +471,7 @@ describe('checkSchemaHistory', () => {
       id: 'schema.history',
       title: 'Schema history and checksums',
       status: 'OK',
-      summary: '1 applied migration(s) match this version of StockFlow.',
+      summary: `${migrations.length} applied migration(s) match this version of StockFlow.`,
       issues: []
     })
   })

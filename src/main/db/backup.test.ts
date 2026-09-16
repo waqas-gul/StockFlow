@@ -15,6 +15,7 @@ import {
 import { formatBackupFileName, sidecarFileOf } from './backup-files'
 import { STOCKFLOW_APPLICATION_ID, readApplicationId, readUserVersion } from './connection'
 import {
+  LATEST_SCHEMA_VERSION,
   TEST_APP_VERSION,
   TEST_TIME,
   createSchemaDatabase,
@@ -32,8 +33,8 @@ import {
 } from './test-utils'
 import { DatabaseFileError, verifyDatabaseFile } from './verify'
 
-const EXPECTED_NAME = 'stockflow-backup_2026-09-14_153045_v1.0.0-test_s1.db'
-const EXPECTED_SIDECAR = 'stockflow-backup_2026-09-14_153045_v1.0.0-test_s1.json'
+const EXPECTED_NAME = `stockflow-backup_2026-09-14_153045_v1.0.0-test_s${LATEST_SCHEMA_VERSION}.db`
+const EXPECTED_SIDECAR = `stockflow-backup_2026-09-14_153045_v1.0.0-test_s${LATEST_SCHEMA_VERSION}.json`
 const EARLIER = new Date(2026, 8, 13, 9, 0, 0)
 
 let temp: TempDir
@@ -107,7 +108,7 @@ describe('createVerifiedBackup', () => {
     expect([bytes[18], bytes[19]]).toEqual([1, 1])
     const copy = temp.track(openSqlite(backup.file, { readonly: true }))
     expect(readApplicationId(copy)).toBe(STOCKFLOW_APPLICATION_ID)
-    expect(readUserVersion(copy)).toBe(1)
+    expect(readUserVersion(copy)).toBe(LATEST_SCHEMA_VERSION)
     expect(copy.all('PRAGMA integrity_check')).toEqual([{ integrity_check: 'ok' }])
     expect(copy.all('PRAGMA foreign_key_check')).toEqual([])
   })
@@ -120,7 +121,7 @@ describe('createVerifiedBackup', () => {
       fileName: EXPECTED_NAME,
       createdAt: TEST_TIME.toISOString(),
       appVersion: TEST_APP_VERSION,
-      schemaVersion: 1,
+      schemaVersion: LATEST_SCHEMA_VERSION,
       sqliteVersion: expect.stringMatching(/^3\.\d+\.\d+$/),
       applicationId: STOCKFLOW_APPLICATION_ID,
       sizeBytes: statSync(file).size,
@@ -133,7 +134,7 @@ describe('createVerifiedBackup', () => {
         message: '[backup] verified backup created',
         context: {
           file: EXPECTED_NAME,
-          schema: 1,
+          schema: LATEST_SCHEMA_VERSION,
           bytes: backup.sizeBytes,
           ms: expect.any(Number),
           sidecar: true
@@ -152,7 +153,7 @@ describe('createVerifiedBackup', () => {
       backupFile: EXPECTED_NAME,
       backupCreatedAt: TEST_TIME.toISOString(),
       appVersion: TEST_APP_VERSION,
-      schemaVersion: 1,
+      schemaVersion: LATEST_SCHEMA_VERSION,
       sqliteVersion: backup.sqliteVersion,
       applicationId: STOCKFLOW_APPLICATION_ID,
       sizeBytes: backup.sizeBytes,
@@ -165,7 +166,7 @@ describe('createVerifiedBackup', () => {
     const first = await createVerifiedBackup(db, folder(), ctx)
     const hash = fileHash(first.file)
     const second = await createVerifiedBackup(db, folder(), ctx)
-    expect(second.fileName).toBe('stockflow-backup_2026-09-14_153045_v1.0.0-test_s1_2.db')
+    expect(second.fileName).toBe(EXPECTED_NAME.replace(/\.db$/, '_2.db'))
     expect(fileHash(first.file)).toBe(hash)
   })
 
@@ -173,7 +174,7 @@ describe('createVerifiedBackup', () => {
     mkdirSync(win32.join(folder(), EXPECTED_SIDECAR), { recursive: true })
     const backup = await createVerifiedBackup(db, folder(), ctx)
     expect(backup.sidecarWritten).toBe(false)
-    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(LATEST_SCHEMA_VERSION)
     expect(listing(folder())).toEqual([EXPECTED_NAME, EXPECTED_SIDECAR])
     expect(ctx.log.entries).toContainEqual({
       level: 'WARN',
@@ -349,7 +350,10 @@ describe('createVerifiedBackup: failure injection', () => {
   it('fails with DESTINATION_UNAVAILABLE when every name for that second is taken', async () => {
     for (let sequence = 1; sequence <= 99; sequence++) {
       writeFileSync(
-        win32.join(folder(), formatBackupFileName(TEST_TIME, TEST_APP_VERSION, 1, sequence)),
+        win32.join(
+          folder(),
+          formatBackupFileName(TEST_TIME, TEST_APP_VERSION, LATEST_SCHEMA_VERSION, sequence)
+        ),
         'taken'
       )
     }
@@ -384,7 +388,7 @@ describe('createCategoryBackup', () => {
     const old = [1, 2, 3, 4, 5, 6].map((day) => oldBackup('pre-restore', new Date(2026, 7, day)))
     holdOpen(temp, win32.join(folder('pre-restore'), old[0]))
     const backup = await createCategoryBackup(db, 'pre-restore', ctx)
-    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(LATEST_SCHEMA_VERSION)
     expect(existsSync(win32.join(folder('pre-restore'), old[0]))).toBe(true)
     expect(ctx.log.entries).toContainEqual(
       expect.objectContaining({
@@ -410,11 +414,11 @@ describe('createVerifiedBackup with a chosen file name (manual backups)', () => 
     expect(backup).toMatchObject({
       file: win32.join(usb(), 'Shop backup.db'),
       fileName: 'Shop backup.db',
-      schemaVersion: 1,
+      schemaVersion: LATEST_SCHEMA_VERSION,
       sidecarWritten: true
     })
     expect(listing(usb())).toEqual(['Shop backup.db', 'Shop backup.json'])
-    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(LATEST_SCHEMA_VERSION)
   })
 
   it('never replaces a file: a name that is taken, or being written, fails with DESTINATION_EXISTS', async () => {
@@ -444,7 +448,7 @@ describe('createVerifiedBackup with a chosen file name (manual backups)', () => 
     const backup = await createVerifiedBackup(db, usb(), ctx, { fileName: 'copy.db' })
     expect(backup.sidecarWritten).toBe(false)
     expect(readFileSync(win32.join(usb(), 'copy.json'), 'utf8')).toBe('{"mine":true}')
-    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(LATEST_SCHEMA_VERSION)
     expect(ctx.log.entries).toContainEqual({
       level: 'WARN',
       message:

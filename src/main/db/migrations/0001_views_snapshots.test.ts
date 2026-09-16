@@ -11,6 +11,7 @@ import {
   type Masters,
   type TempDir
 } from '../test-utils'
+import { initialMigration } from './0001_initial'
 
 // Technical fixture rows in temporary databases only. Production seeds contain none of this.
 
@@ -21,7 +22,7 @@ let d: Documents
 
 beforeEach(async () => {
   temp = createTempDir()
-  db = await createSchemaDatabase(temp)
+  db = await createSchemaDatabase(temp, [initialMigration])
   m = insertMasters(db)
   d = insertDocuments(db, m)
 })

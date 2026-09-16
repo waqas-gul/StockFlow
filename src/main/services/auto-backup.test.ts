@@ -3,7 +3,13 @@ import { win32 } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { backupFolder } from '../data-paths'
 import { formatBackupFileName, parseBackupFileName, type BackupName } from '../db/backup-files'
-import { TEST_APP_VERSION, createTempDir, fileHash, type TempDir } from '../db/test-utils'
+import {
+  LATEST_SCHEMA_VERSION,
+  TEST_APP_VERSION,
+  createTempDir,
+  fileHash,
+  type TempDir
+} from '../db/test-utils'
 import { verifyDatabaseFile } from '../db/verify'
 import {
   AUTOMATIC_BACKUP_CHECK_INTERVAL_MS,
@@ -124,7 +130,7 @@ function autoBackups(): string[] {
 }
 
 function nameAt(time: Date): string {
-  return formatBackupFileName(time, TEST_APP_VERSION, 1)
+  return formatBackupFileName(time, TEST_APP_VERSION, LATEST_SCHEMA_VERSION)
 }
 
 /** A stand-in earlier automatic backup (rotation reads names only). */
@@ -139,7 +145,9 @@ describe('AutomaticBackups.runIfDue', () => {
   it('makes a verified backup in backups\\auto at the first launch of the day', async () => {
     await expect(fixture.automatic.runIfDue('LAUNCH')).resolves.toBe('CREATED')
     expect(autoBackups()).toEqual([nameAt(MORNING)])
-    expect(verifyDatabaseFile(win32.join(autoFolder(), nameAt(MORNING))).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(win32.join(autoFolder(), nameAt(MORNING))).schemaVersion).toBe(
+      LATEST_SCHEMA_VERSION
+    )
     expect(fixture.ctx.log.entries).toContainEqual({
       level: 'INFO',
       message: '[backup] automatic backup made',

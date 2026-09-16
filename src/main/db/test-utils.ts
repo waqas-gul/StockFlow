@@ -65,9 +65,18 @@ export function sqlChecksum(sql: string): string {
   return `sha256:${createHash('sha256').update(sql, 'utf8').digest('hex')}`
 }
 
-/** A new database at `<temp>\data\shop.db`, migrated to the latest schema exactly as the app does on first start. */
-export async function createSchemaDatabase(temp: TempDir): Promise<Db> {
-  return temp.track(await initializeDatabase(testContext(temp)))
+/** The schema version of a database this version of StockFlow creates: one per production migration. */
+export const LATEST_SCHEMA_VERSION = migrations.length
+
+/**
+ * A new database at `<temp>\data\shop.db`, migrated to the latest schema exactly as the app does on first start, or
+ * with `list` only (e.g. `[initialMigration]` for the tests of 0001 itself).
+ */
+export async function createSchemaDatabase(
+  temp: TempDir,
+  list: readonly Migration[] = migrations
+): Promise<Db> {
+  return temp.track(await initializeDatabase(testContext(temp, { migrations: list })))
 }
 
 // --- Data-safety fixtures ---

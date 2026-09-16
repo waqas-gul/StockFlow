@@ -5,7 +5,14 @@ import { ipcCalls } from '@shared/ipc-contract'
 import { MINOR_DIGITS_LOCKED_MESSAGE } from '@shared/settings'
 import type { Result } from '@shared/types/result'
 import { backupFolder } from '../data-paths'
-import { createTempDir, insertMasters, insertRow, rows, type TempDir } from '../db/test-utils'
+import {
+  LATEST_SCHEMA_VERSION,
+  createTempDir,
+  insertMasters,
+  insertRow,
+  rows,
+  type TempDir
+} from '../db/test-utils'
 import { DEFAULT_SETTINGS, readSettings } from '../services/settings.service'
 import { createServicesFixture, type ServicesFixture } from '../services/test-utils'
 import { registerIpc } from './index'
@@ -98,7 +105,7 @@ describe('registerIpc', () => {
         mode: 'development',
         databaseDriver: 'better-sqlite3',
         sqliteVersion: expect.stringMatching(/^3\./),
-        schemaVersion: 1,
+        schemaVersion: LATEST_SCHEMA_VERSION,
         dataDirectory: '%APPDATA%\\StockFlow-dev\\data'
       }
     })
@@ -344,6 +351,168 @@ describe('companies and products', () => {
     ],
     ['a company without a name', 'companies:create', {}],
     ['companies:list with input', 'companies:list', { path: 'C:\\x' }]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})
+
+describe('stock', () => {
+  // The fixture clock reads 14 Sep 2026: the main process dates documents by it.
+  const TODAY = '2026-09-14'
+  const pieceUnit = {
+    id: null,
+    name: 'Piece',
+    shortName: null,
+    baseQty: 1,
+    isBase: true,
+    canSell: true,
+    canPurchase: true,
+    wholesalePriceMinor: null,
+    retailPriceMinor: null,
+    defaultCostMinor: null,
+    isActive: true
+  }
+
+  async function createTea(): Promise<{ productId: number; unitId: number }> {
+    const created = await call('products:create', {
+      code: 'P-001',
+      name: 'Tea 950g',
+      companyId: null,
+      packingLabel: null,
+      lowStockThresholdBase: 0,
+      currencyMinorDigits: 2,
+      units: [pieceUnit]
+    })
+    const data = (created as { data: { id: number; units: Array<{ id: number }> } }).data
+    return { productId: data.id, unitId: data.units[0].id }
+  }
+
+  function adjustment(
+    productId: number,
+    unitId: number,
+    overrides: Record<string, unknown>
+  ): unknown {
+    return {
+      requestId: 'ipc-adjust-0001',
+      adjustmentDate: TODAY,
+      productId,
+      reason: 'DAMAGE',
+      direction: null,
+      unitId,
+      quantity: 1,
+      unitCostMinor: null,
+      receiptItemId: null,
+      reasonNote: 'Broken',
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  it('receives, lists, reads, voids and adjusts stock through IPC, dated by the main process clock', async () => {
+    const { productId, unitId } = await createTea()
+    const received = await call('stock:receive', {
+      requestId: 'ipc-receipt-0001',
+      receiptDate: TODAY,
+      supplierName: 'Acme',
+      reference: null,
+      note: null,
+      currencyMinorDigits: 2,
+      lines: [{ productId, unitId, quantity: 10, unitCostMinor: 1000 }]
+    })
+    expect(received).toMatchObject({
+      ok: true,
+      data: { receiptNo: 'GRN-000001', totalCostMinor: 10000 }
+    })
+    const receiptId = (received as { data: { id: number } }).data.id
+
+    await expect(
+      call('stock:listReceipts', { page: 1, pageSize: 10, search: '' })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { total: 1, items: [{ id: receiptId, voidable: true }] }
+    })
+    await expect(call('stock:getReceipt', receiptId)).resolves.toMatchObject({
+      ok: true,
+      data: { id: receiptId }
+    })
+    await expect(call('stock:summary', productId)).resolves.toEqual({
+      ok: true,
+      data: {
+        productId,
+        qtyBase: 10,
+        valueMinor: 10000,
+        hasMovements: true,
+        latestMovementDate: TODAY
+      }
+    })
+    await expect(call('stock:postingFloor', { productIds: [productId] })).resolves.toMatchObject({
+      ok: true,
+      data: { today: TODAY, earliestDate: TODAY }
+    })
+    await expect(
+      call('stock:voidReceipt', { id: receiptId, reason: 'Keyed twice' })
+    ).resolves.toMatchObject({ ok: true, data: { status: 'VOID', voidDate: TODAY } })
+
+    const corrected = await call(
+      'stock:adjust',
+      adjustment(productId, unitId, {
+        reason: 'OTHER_CORRECTION',
+        direction: 'IN',
+        quantity: 4,
+        unitCostMinor: 500,
+        reasonNote: 'Found in the store room'
+      })
+    )
+    expect(corrected).toMatchObject({
+      ok: true,
+      data: { adjustmentNo: 'ADJ-000001', valueMinor: 2000 }
+    })
+    await expect(
+      call('stock:listAdjustments', { page: 1, pageSize: 10, productId })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1 } })
+    await expect(
+      call('stock:stockCard', { productId, page: null, pageSize: 50 })
+    ).resolves.toMatchObject({ ok: true, data: { qtyBase: 4, valueMinor: 2000, total: 3 } })
+  })
+
+  it('returns stock errors as clean AppErrors, never SQLite text', async () => {
+    const { productId, unitId } = await createTea()
+    const tooMuch = await call('stock:adjust', adjustment(productId, unitId, {}))
+    expect(tooMuch).toMatchObject({ ok: false, error: { code: 'INSUFFICIENT_STOCK' } })
+    const future = await call('stock:receive', {
+      requestId: 'ipc-receipt-0002',
+      receiptDate: '2026-09-15',
+      supplierName: null,
+      reference: null,
+      note: null,
+      currencyMinorDigits: 2,
+      lines: [{ productId, unitId, quantity: 1, unitCostMinor: 1 }]
+    })
+    expect(future).toMatchObject({ ok: false, error: { code: 'DATE_NOT_ALLOWED' } })
+    await expect(call('stock:getReceipt', 42)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' }
+    })
+    expect(JSON.stringify([tooMuch, future])).not.toMatch(/SQLITE|constraint/i)
+  })
+
+  it.each<[string, string, unknown]>([
+    [
+      'a receipt with an extra field',
+      'stock:receive',
+      { requestId: 'ipc-receipt-0003', sql: 'DELETE FROM stock_movements' }
+    ],
+    [
+      'a stock card page size over 100',
+      'stock:stockCard',
+      { productId: 1, page: 1, pageSize: 500 }
+    ],
+    ['a reason code outside the fixed list', 'stock:adjust', { reason: 'GIFT' }],
+    ['a receipt id as text', 'stock:getReceipt', '1'],
+    ['a void without a reason', 'stock:voidReceipt', { id: 1 }]
   ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
     await expect(call(channel, input)).resolves.toMatchObject({
       ok: false,

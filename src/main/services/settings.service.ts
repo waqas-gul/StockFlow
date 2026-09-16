@@ -71,6 +71,20 @@ export function readSettings(db: Db, log?: Pick<Logger, 'warn'>): Settings {
 }
 
 /**
+ * Refuses amounts that were entered for other currency decimal places than the current setting (the setting changed
+ * while a form was open): CONFLICT, so nothing is saved with a misread amount.
+ */
+export function assertCurrencyDigits(db: Db, minorDigits: number): void {
+  if (readSettings(db)['currency.minorDigits'] !== minorDigits) {
+    throw new AppFailure({
+      code: 'CONFLICT',
+      message:
+        'The currency settings changed while the form was open. Close the form and try again.'
+    })
+  }
+}
+
+/**
  * True once any amount is stored: a unit price or default cost, a stock receipt, adjustment or movement, an invoice
  * with its lines and quantities, a payment, an expense or a customer ledger entry. Amounts are whole minor units, so
  * `currency.minorDigits` must not change after that. The seeded settings, counters, walk-in customer and expense

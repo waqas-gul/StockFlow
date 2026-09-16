@@ -15,6 +15,7 @@ import { openSqlite, type Db } from '../db/adapter'
 import { createVerifiedBackup } from '../db/backup'
 import {
   TEST_TIME,
+  LATEST_SCHEMA_VERSION,
   createTempDir,
   insertRow,
   replaceFolderWithFile,
@@ -124,7 +125,7 @@ describe('RestoreService.selectCandidate', () => {
       summary: {
         fileName: win32.basename(file),
         backupCreatedAt: CANDIDATE_TIME.toISOString(),
-        schemaVersion: 1,
+        schemaVersion: LATEST_SCHEMA_VERSION,
         appVersion: '0.9.0',
         products: 0,
         customers: 1,

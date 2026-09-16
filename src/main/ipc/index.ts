@@ -9,6 +9,16 @@ import {
   ProductUpdateSchema
 } from '@shared/products'
 import { EditableSettingsPatchSchema } from '@shared/settings'
+import {
+  AdjustmentListInputSchema,
+  PostingFloorInputSchema,
+  ReceiptListInputSchema,
+  ReceiptVoidInputSchema,
+  StockAdjustmentInputSchema,
+  StockCardInputSchema,
+  StockIdSchema,
+  StockReceiptInputSchema
+} from '@shared/stock'
 import { RESTORE_CONFIRMATION } from '@shared/types/backup'
 import { SetActiveSchema } from '@shared/validation'
 import { readAppInfo, type AppInfoSources } from '../app-info'
@@ -32,6 +42,17 @@ import {
 } from '../services/products.service'
 import type { RestoreService } from '../services/restore.service'
 import { readSettingsView, updateSettingsView } from '../services/settings.service'
+import {
+  adjustStock,
+  getReceipt,
+  listAdjustments,
+  listReceipts,
+  postingFloor,
+  receiveStock,
+  stockCard,
+  stockSummary,
+  voidReceipt
+} from '../services/stock.service'
 import {
   registerIpcHandlers,
   type HandlerOptions,
@@ -102,6 +123,36 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       search: {
         input: ProductSearchInputSchema,
         run: (input) => searchProducts(database.get(), input)
+      }
+    },
+    // Posting dates are checked against the main process's clock, never the renderer's.
+    stock: {
+      receive: {
+        input: StockReceiptInputSchema,
+        run: (input) => receiveStock(database.get(), input, ctx.now())
+      },
+      listReceipts: {
+        input: ReceiptListInputSchema,
+        run: (input) => listReceipts(database.get(), input)
+      },
+      getReceipt: { input: StockIdSchema, run: (id) => getReceipt(database.get(), id) },
+      voidReceipt: {
+        input: ReceiptVoidInputSchema,
+        run: (input) => voidReceipt(database.get(), input, ctx.now())
+      },
+      adjust: {
+        input: StockAdjustmentInputSchema,
+        run: (input) => adjustStock(database.get(), input, ctx.now())
+      },
+      listAdjustments: {
+        input: AdjustmentListInputSchema,
+        run: (input) => listAdjustments(database.get(), input)
+      },
+      stockCard: { input: StockCardInputSchema, run: (input) => stockCard(database.get(), input) },
+      summary: { input: StockIdSchema, run: (id) => stockSummary(database.get(), id) },
+      postingFloor: {
+        input: PostingFloorInputSchema,
+        run: (input) => postingFloor(database.get(), input, ctx.now())
       }
     }
   }

@@ -15,6 +15,7 @@ import {
   type Row,
   type TempDir
 } from '../test-utils'
+import { initialMigration } from './0001_initial'
 
 // Constraints are tested directly against SQLite with technical fixture rows in temporary databases.
 
@@ -33,7 +34,7 @@ let d: Documents
 
 beforeEach(async () => {
   temp = createTempDir()
-  db = await createSchemaDatabase(temp)
+  db = await createSchemaDatabase(temp, [initialMigration])
   m = insertMasters(db)
   d = insertDocuments(db, m)
 })

@@ -3,13 +3,19 @@ import { win32 } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { backupFolder } from '../data-paths'
 import { formatBackupFileName } from '../db/backup-files'
-import { TEST_APP_VERSION, TEST_TIME, createTempDir, type TempDir } from '../db/test-utils'
+import {
+  LATEST_SCHEMA_VERSION,
+  TEST_APP_VERSION,
+  TEST_TIME,
+  createTempDir,
+  type TempDir
+} from '../db/test-utils'
 import { verifyDatabaseFile } from '../db/verify'
 import { AppFailure } from '../errors'
 import { BackupStatusStore, backupFailureMessage } from './backup-status'
 import { createServicesFixture, type ServicesFixture } from './test-utils'
 
-const SUGGESTED = formatBackupFileName(TEST_TIME, TEST_APP_VERSION, 1)
+const SUGGESTED = formatBackupFileName(TEST_TIME, TEST_APP_VERSION, LATEST_SCHEMA_VERSION)
 const INSIDE_DATA_FOLDER =
   'Choose a folder outside the StockFlow data folder, such as a USB drive, a second drive or your Documents folder.'
 
@@ -67,7 +73,7 @@ describe('BackupService.createManual (Backup Now)', () => {
       backup: { at: TEST_TIME.toISOString(), fileName: 'my shop backup.db', location: usb() }
     })
     expect(listing(usb())).toEqual(['my shop backup.db', 'my shop backup.json'])
-    expect(verifyDatabaseFile(usb('my shop backup.db')).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(usb('my shop backup.db')).schemaVersion).toBe(LATEST_SCHEMA_VERSION)
     expect(fixture.ctx.log.entries).toContainEqual({
       level: 'INFO',
       message: '[backup] manual backup saved',
@@ -82,7 +88,7 @@ describe('BackupService.createManual (Backup Now)', () => {
     await expect(fixture.backups.createManual()).resolves.toMatchObject({
       backup: { fileName: 'shop-copy.db' }
     })
-    expect(verifyDatabaseFile(usb('shop-copy.db')).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(usb('shop-copy.db')).schemaVersion).toBe(LATEST_SCHEMA_VERSION)
   })
 
   it('remembers the last manual backup across restarts and opens the next dialog in its folder', async () => {

@@ -156,7 +156,8 @@ describe('0001_initial: definition', () => {
     // Shipped migrations are never edited. A change here means a shipped migration was edited: revert it and
     // put the change in a new migration instead.
     const shipped: Record<number, string> = {
-      1: 'sha256:0cc4eb9837b99f71442ed9e8bbd48723f869bcbc8fb2f4d8b0dcd90bee576cc4'
+      1: 'sha256:0cc4eb9837b99f71442ed9e8bbd48723f869bcbc8fb2f4d8b0dcd90bee576cc4',
+      2: 'sha256:fb50cb92d9de9f5d2e41866ea02f9192bd5416f2284e33e1e4a7483f6c4a442d'
     }
     for (const migration of migrations) {
       expect({ version: migration.version, checksum: migration.checksum }).toEqual({
@@ -175,6 +176,7 @@ describe('0001_initial: definition', () => {
   })
 })
 
+// These tests look at what 0001 itself creates, on a database migrated with 0001 only (0002 has its own tests).
 describe('0001_initial: migrating a new database', () => {
   it('migrates a new StockFlow database from schema 0 to schema 1', async () => {
     const file = testContext(temp).paths.databaseFile
@@ -182,12 +184,12 @@ describe('0001_initial: migrating a new database', () => {
     expect(readUserVersion(fresh)).toBe(0)
     fresh.close()
 
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(readUserVersion(db)).toBe(1)
   })
 
   it('creates exactly the V1 tables, every one of them STRICT', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(objectNames(db, 'table')).toEqual([...V1_TABLES].sort())
     const tables = db.all<{ name: string; strict: number }>(
       "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND type = 'table' AND name NOT LIKE 'sqlite%'"
@@ -197,14 +199,14 @@ describe('0001_initial: migrating a new database', () => {
   })
 
   it('creates exactly the expected views, indexes and triggers', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(objectNames(db, 'view')).toEqual(V1_VIEWS)
     expect(objectNames(db, 'index')).toEqual([...V1_INDEXES].sort())
     expect(objectNames(db, 'trigger')).toEqual([...V1_TRIGGERS].sort())
   })
 
   it('stores money, quantities and percentages as INTEGER, and dates and timestamps as TEXT', async () => {
-    const columns = columnsOf(await createSchemaDatabase(temp))
+    const columns = columnsOf(await createSchemaDatabase(temp, [initialMigration]))
     const numeric = columns.filter((column) =>
       /(_minor|_bps|_qty|qty_base|_count)$|^(quantity|seq_no|next_value|line_no)$/.test(column.name)
     )
@@ -219,7 +221,7 @@ describe('0001_initial: migrating a new database', () => {
   })
 
   it('uses ON DELETE RESTRICT for every foreign key, so history is never cascade-deleted', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     const keys = objectNames(db, 'table').flatMap((table) =>
       db
         .all<{ table: string; from: string; on_delete: string }>(
@@ -237,7 +239,7 @@ describe('0001_initial: migrating a new database', () => {
   })
 
   it('leaves a database that passes integrity_check and foreign_key_check', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(db.all('PRAGMA integrity_check')).toEqual([{ integrity_check: 'ok' }])
     expect(db.all('PRAGMA foreign_key_check')).toEqual([])
   })
@@ -247,7 +249,7 @@ describe('0001_initial: migrating a new database', () => {
     // A table 0001 wants to create near the end of its script already exists, so 0001 fails there.
     db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY) STRICT')
     await expect(
-      migrate(db, migrations, {
+      migrate(db, [initialMigration], {
         backupBeforeMigrating: async () => undefined,
         recordMigration: recordSchemaMigration(TEST_APP_VERSION)
       })
@@ -264,7 +266,7 @@ describe('0001_initial: migrating a new database', () => {
   it('is rolled back completely when recording it in schema_migrations fails', async () => {
     const db = temp.track(openDatabase(temp.file('shop.db')))
     await expect(
-      migrate(db, migrations, {
+      migrate(db, [initialMigration], {
         backupBeforeMigrating: async () => undefined,
         recordMigration: () => {
           throw new Error('could not record')
@@ -278,7 +280,7 @@ describe('0001_initial: migrating a new database', () => {
 
 describe('0001_initial: seed data', () => {
   it('seeds the default settings as JSON values', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     const settings = db.all<{ key: string; value: string; updated_at: string }>(
       'SELECT key, value, updated_at FROM settings ORDER BY key'
     )
@@ -302,7 +304,7 @@ describe('0001_initial: seed data', () => {
   })
 
   it('seeds the document sequences; the walk-in customer already uses customer number 1', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(db.all('SELECT name, next_value FROM sequences ORDER BY name')).toEqual([
       { name: 'adjustment', next_value: 1 },
       { name: 'customer', next_value: 2 },
@@ -313,7 +315,7 @@ describe('0001_initial: seed data', () => {
   })
 
   it('seeds the stable "Cash / Walk-in" customer as C-00001', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(db.all('SELECT id, code, name, shop_name, is_active FROM customers')).toEqual([
       { id: 1, code: 'C-00001', name: 'Cash / Walk-in', shop_name: null, is_active: 1 }
     ])
@@ -324,7 +326,7 @@ describe('0001_initial: seed data', () => {
   })
 
   it('seeds the expense categories named in the plan, in both groups', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     expect(db.all('SELECT name, grp, is_active FROM expense_categories ORDER BY id')).toEqual([
       { name: 'Shop Expenses', grp: 'SHOP', is_active: 1 },
       { name: 'Monthly / General Expenses', grp: 'GENERAL', is_active: 1 },
@@ -334,7 +336,7 @@ describe('0001_initial: seed data', () => {
   })
 
   it('creates no products, stock, invoices, payments, ledger entries or expenses', async () => {
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, [initialMigration])
     const empty = V1_TABLES.filter(
       (table) =>
         !['settings', 'sequences', 'expense_categories', 'customers', 'schema_migrations'].includes(

@@ -32,6 +32,7 @@ import { CompaniesDialog } from './CompaniesDialog'
 import { toggleProductActive, type ProductNotifier } from './product-actions'
 import { stockText, type CurrencyFormat } from './product-display'
 import { ProductFormDialog, type ProductEditorTarget } from './ProductFormDialog'
+import { StockCardDialog } from '../stock/StockCardDialog'
 import { ProductsTable } from './ProductsTable'
 
 export const PRODUCTS_PAGE_SIZE = 25
@@ -68,6 +69,7 @@ export function ProductsPage(): React.JSX.Element {
   const [companiesOpen, setCompaniesOpen] = useState(false)
   const [confirming, setConfirming] = useState<ProductListItem | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [stockCardId, setStockCardId] = useState<number | null>(null)
 
   const currency: CurrencyFormat | null = settings.data
     ? {
@@ -203,6 +205,7 @@ export function ProductsPage(): React.JSX.Element {
               busyId={busyId}
               onEdit={(id) => setEditor({ mode: 'edit', id })}
               onToggleActive={onToggleActive}
+              onStockCard={setStockCardId}
             />
             <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
               <span>
@@ -251,6 +254,13 @@ export function ProductsPage(): React.JSX.Element {
         />
       )}
       <CompaniesDialog open={companiesOpen} onOpenChange={setCompaniesOpen} />
+      {currency !== null && (
+        <StockCardDialog
+          productId={stockCardId}
+          currency={currency}
+          onClose={() => setStockCardId(null)}
+        />
+      )}
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

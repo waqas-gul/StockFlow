@@ -148,7 +148,7 @@ describe('validateRestoreCandidate', () => {
     const candidate = await candidateBackup(['Restored A', 'Restored B'])
     expect(validateRestoreCandidate(candidate.file, ctx)).toEqual({
       fileName: candidate.fileName,
-      schemaVersion: 1,
+      schemaVersion: migrations.length,
       appVersion: '0.9.0',
       backupCreatedAt: CANDIDATE_TIME.toISOString(),
       sizeBytes: candidate.sizeBytes,
@@ -194,10 +194,13 @@ describe('validateRestoreCandidate', () => {
   it('accepts an older supported backup and reports that it will be migrated', async () => {
     const candidate = await candidateBackup(['Old'])
     const newer = testContext(temp, {
-      migrations: [...migrations, fixtureMigration(2, '0002_fixture_later', 'SELECT 1')]
+      migrations: [
+        ...migrations,
+        fixtureMigration(migrations.length + 1, '9999_fixture_later', 'SELECT 1')
+      ]
     })
     expect(validateRestoreCandidate(candidate.file, newer)).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: migrations.length,
       needsMigration: true
     })
   })
@@ -260,7 +263,7 @@ describe('validateRestoreCandidate', () => {
   it('refuses a backup made by a newer version of StockFlow, with a clear message', async () => {
     const candidate = await candidateBackup(['Future'])
     const newer = copyAs(candidate.file, 'newer.db')
-    editDatabaseFile(newer, 'PRAGMA user_version = 2')
+    editDatabaseFile(newer, `PRAGMA user_version = ${migrations.length + 1}`)
     expect(validationError(newer)).toMatchObject({ code: 'SCHEMA_TOO_NEW', message: NEWER_MESSAGE })
   })
 
@@ -319,13 +322,20 @@ describe('restoreDatabase', () => {
     expect(companiesOnDisk()).toEqual(['Restored A'])
     // Decision 6: the restored connection runs with every required pragma, recursive_triggers included.
     expect(readConnectionPragmas(db)).toEqual(CONNECTION_PRAGMAS)
-    expect(outcome.summary).toMatchObject({ fileName: candidate.fileName, schemaVersion: 1 })
-    expect(outcome.migration).toEqual({ fromVersion: 1, toVersion: 1, applied: [] })
+    expect(outcome.summary).toMatchObject({
+      fileName: candidate.fileName,
+      schemaVersion: migrations.length
+    })
+    expect(outcome.migration).toEqual({
+      fromVersion: migrations.length,
+      toVersion: migrations.length,
+      applied: []
+    })
     expect(readdirSync(ctx.paths.dataDir).sort()).toEqual(['shop.db', 'shop.db-shm', 'shop.db-wal'])
     expect(ctx.log.entries).toContainEqual({
       level: 'INFO',
       message: '[restore] the backup was restored',
-      context: { file: candidate.fileName, schema: 1, migrated: 0 }
+      context: { file: candidate.fileName, schema: migrations.length, migrated: 0 }
     })
   })
 
@@ -334,7 +344,7 @@ describe('restoreDatabase', () => {
     const { preRestoreBackup, recoveryArtifact } = restoredOver(outcome, 'HEALTHY')
     expect(recoveryArtifact).toBeNull()
     expect(win32.dirname(preRestoreBackup.file)).toBe(backupFolder(ctx.paths, 'pre-restore'))
-    expect(verifyDatabaseFile(preRestoreBackup.file).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(preRestoreBackup.file).schemaVersion).toBe(migrations.length)
     const copy = temp.track(openSqlite(preRestoreBackup.file, { readonly: true }))
     expect(companies(copy)).toEqual(['Current data'])
   })
@@ -371,12 +381,12 @@ describe('restoreDatabase', () => {
   it('migrates an older supported backup after restoring it, with its own verified pre-migration backup', async () => {
     const candidate = await candidateBackup(['Old backup'])
     const later = fixtureMigration(
-      2,
-      '0002_fixture_later',
+      migrations.length + 1,
+      '9999_fixture_later',
       'CREATE TABLE fixture_later (id INTEGER PRIMARY KEY) STRICT'
     )
     const newer = testContext(temp, { now: () => TEST_TIME, migrations: [...migrations, later] })
-    // The running app is already at schema 2.
+    // The running app is already at the newer schema.
     await upgradeSchema(live, newer)
 
     const outcome = await restoreDatabase(live, candidate.file, newer)
@@ -385,11 +395,11 @@ describe('restoreDatabase', () => {
     const db = temp.track(outcome.db)
     expect(outcome.summary.needsMigration).toBe(true)
     expect(outcome.migration).toEqual({
-      fromVersion: 1,
-      toVersion: 2,
-      applied: ['0002_fixture_later']
+      fromVersion: migrations.length,
+      toVersion: migrations.length + 1,
+      applied: ['9999_fixture_later']
     })
-    expect(readUserVersion(db)).toBe(2)
+    expect(readUserVersion(db)).toBe(migrations.length + 1)
     expect(companies(db)).toEqual(['Old backup'])
     expect(db.get("SELECT name FROM sqlite_schema WHERE name = 'fixture_later'")).toEqual({
       name: 'fixture_later'
@@ -399,8 +409,8 @@ describe('restoreDatabase', () => {
       .filter((name) => name.endsWith('.db'))
       .sort()
     expect(backups).toEqual([
-      'stockflow-backup_2026-09-14_153045_v1.0.0-test_s1.db',
-      'stockflow-backup_2026-09-14_153045_v1.0.0-test_s1_2.db'
+      `stockflow-backup_2026-09-14_153045_v1.0.0-test_s${migrations.length}.db`,
+      `stockflow-backup_2026-09-14_153045_v1.0.0-test_s${migrations.length}_2.db`
     ])
     const restoredCopy = temp.track(openSqlite(win32.join(folder, backups[1]), { readonly: true }))
     expect(companies(restoredCopy)).toEqual(['Old backup'])
@@ -529,8 +539,8 @@ describe('restoreDatabase: failure recovery', () => {
   it('migrating a restored older backup fails: the previous database is put back', async () => {
     const candidate = await candidateBackup(['Old backup'])
     const failing: Migration = {
-      version: 2,
-      name: '0002_fixture_fails',
+      version: migrations.length + 1,
+      name: '9999_fixture_fails',
       checksum: `sha256:${'0'.repeat(64)}`,
       up: () => {
         throw new Error('simulated migration failure')
@@ -570,7 +580,7 @@ describe('restoreDatabase: failure recovery', () => {
     const folder = backupFolder(ctx.paths, 'pre-restore')
     const [preRestore] = readdirSync(folder).filter((name) => name.endsWith('.db'))
     expect(outcome.error.message).toContain(preRestore)
-    expect(verifyDatabaseFile(win32.join(folder, preRestore)).schemaVersion).toBe(1)
+    expect(verifyDatabaseFile(win32.join(folder, preRestore)).schemaVersion).toBe(migrations.length)
 
     // A restart releases the file; the next start puts the previous database back.
     holder?.close()
@@ -713,7 +723,12 @@ describe('restoreDatabase: a damaged current database is preserved, not backed u
       level: 'INFO',
       message:
         '[restore] the backup was restored; the damaged database is kept in the recovery folder',
-      context: { file: candidate.fileName, schema: 1, migrated: 0, recovery: QUARANTINE }
+      context: {
+        file: candidate.fileName,
+        schema: migrations.length,
+        migrated: 0,
+        recovery: QUARANTINE
+      }
     })
   })
 
@@ -827,7 +842,7 @@ describe('restoreDatabase: a damaged current database is preserved, not backed u
     const damagedBackup = copyAs((await candidateBackup(['x'])).file, 'damaged.db')
     violateCheckConstraint(damagedBackup)
     const newer = copyAs((await candidateBackup(['y'])).file, 'newer.db')
-    editDatabaseFile(newer, 'PRAGMA user_version = 2')
+    editDatabaseFile(newer, `PRAGMA user_version = ${migrations.length + 1}`)
     const cases = [
       [temp.file('notes.db'), 'NOT_A_DATABASE'],
       [damagedBackup, 'DAMAGED'],
@@ -954,8 +969,8 @@ describe('restoreDatabase: the damaged database is never lost when a restore ove
     const candidate = await candidateBackup(['Old backup'])
     const before = unopenableLive()
     const failing: Migration = {
-      version: 2,
-      name: '0002_fixture_fails',
+      version: migrations.length + 1,
+      name: '9999_fixture_fails',
       checksum: `sha256:${'0'.repeat(64)}`,
       up: () => {
         throw new Error('simulated migration failure')
@@ -1122,9 +1137,9 @@ describe('restoreDatabase without an open connection (normal startup is blocked)
     expect(companies(db)).toEqual(['Restored'])
     // The refused database is kept, unchanged, in the verified pre-restore backup.
     const copy = temp.track(openSqlite(restored.preRestoreBackup.file, { readonly: true }))
-    expect(copy.all('SELECT checksum FROM schema_migrations')).toEqual([
-      { checksum: OTHER_CHECKSUM }
-    ])
+    expect(copy.all('SELECT checksum FROM schema_migrations')).toEqual(
+      migrations.map(() => ({ checksum: OTHER_CHECKSUM }))
+    )
   })
 })
 

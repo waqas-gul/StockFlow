@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openSqlite } from './adapter'
 import { STOCKFLOW_APPLICATION_ID, openDatabase } from './connection'
 import {
+  LATEST_SCHEMA_VERSION,
   corruptIndex,
   createSchemaDatabase,
   createTempDir,
@@ -63,7 +64,7 @@ describe('verifyDatabaseFile', () => {
     const file = await schemaCopy()
     expect(verifyDatabaseFile(file)).toEqual({
       applicationId: STOCKFLOW_APPLICATION_ID,
-      schemaVersion: 1,
+      schemaVersion: LATEST_SCHEMA_VERSION,
       sqliteVersion: expect.stringMatching(/^3\.\d+\.\d+$/),
       counts: { products: 0, customers: 1, invoices: 0 }
     })

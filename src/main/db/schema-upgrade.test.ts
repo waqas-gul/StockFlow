@@ -34,13 +34,19 @@ import { verifyDatabaseFile, type DatabaseFileReport } from './verify'
 
 const BACKUP_S1 = 'stockflow-backup_2026-09-14_153045_v1.0.0-test_s1.db'
 
+/**
+ * The upgrade mechanics are tested from a fixed schema 1 (0001 only) to TEST-ONLY migrations after it; the real
+ * 0001 → 0002 upgrade has its own test (migrations/0002_stock_adjustment_receipt_item.test.ts).
+ */
+const SCHEMA_1: readonly Migration[] = [migrations[0]]
+
 let temp: TempDir
 let db: Db
 let migration2Ran: boolean
 
 beforeEach(async () => {
   temp = createTempDir()
-  db = await createSchemaDatabase(temp)
+  db = await createSchemaDatabase(temp, SCHEMA_1)
   migration2Ran = false
 })
 
@@ -100,7 +106,7 @@ describe('upgradeSchema: the verified pre-migration backup (schema 1 → test mi
         companies: inBackup
       }
     })
-    const ctx = contextWith([...migrations, later])
+    const ctx = contextWith([...SCHEMA_1, later])
 
     const result = await upgradeSchema(db, ctx)
 
@@ -133,7 +139,7 @@ describe('upgradeSchema: the verified pre-migration backup (schema 1 → test mi
         'older backup'
       )
     }
-    await upgradeSchema(db, contextWith([...migrations, migration2()]))
+    await upgradeSchema(db, contextWith([...SCHEMA_1, migration2()]))
     expect(preMigrationBackups()).toEqual([
       'stockflow-backup_2026-08-03_120000_v1.0.0_s1.db',
       'stockflow-backup_2026-08-04_120000_v1.0.0_s1.db',
@@ -144,7 +150,7 @@ describe('upgradeSchema: the verified pre-migration backup (schema 1 → test mi
   })
 
   it('does nothing, and makes no backup, when the database is current', async () => {
-    const ctx = contextWith(migrations)
+    const ctx = contextWith(SCHEMA_1)
     await expect(upgradeSchema(db, ctx)).resolves.toEqual({
       fromVersion: 1,
       toVersion: 1,
@@ -156,7 +162,7 @@ describe('upgradeSchema: the verified pre-migration backup (schema 1 → test mi
 
   it('makes no backup of a new, empty database, which has nothing to lose', async () => {
     const empty = temp.track(openDatabase(temp.file('empty\\shop.db')))
-    const ctx = contextWith(migrations)
+    const ctx = contextWith(SCHEMA_1)
     await upgradeSchema(empty, ctx)
     expect(readUserVersion(empty)).toBe(1)
     expect(preMigrationBackups()).toEqual([])
@@ -170,9 +176,7 @@ describe('upgradeSchema: the verified pre-migration backup (schema 1 → test mi
   it('is the backup that initializeDatabase uses when a newer app opens a schema-1 database', async () => {
     insertRow(db, 'companies', { name: 'Before the update' })
     db.close()
-    const reopened = temp.track(
-      await initializeDatabase(contextWith([...migrations, migration2()]))
-    )
+    const reopened = temp.track(await initializeDatabase(contextWith([...SCHEMA_1, migration2()])))
     expect(readUserVersion(reopened)).toBe(2)
     expect(preMigrationBackups()).toEqual([BACKUP_S1])
     const copy = temp.track(
@@ -182,7 +186,7 @@ describe('upgradeSchema: the verified pre-migration backup (schema 1 → test mi
   })
 
   it('is exported as the runner hook for the migration runner', async () => {
-    const hook = verifiedPreMigrationBackup(contextWith(migrations))
+    const hook = verifiedPreMigrationBackup(contextWith(SCHEMA_1))
     await hook(db, { currentVersion: 1, latestVersion: 2, pending: [] })
     expect(preMigrationBackups()).toEqual([BACKUP_S1])
   })
@@ -242,7 +246,7 @@ describe('upgradeSchema: a failed pre-migration backup means migration 2 never s
   it.each(scenarios)('%s', async (_label, scenario) => {
     const { target, faults, arrange } = scenario()
     arrange?.()
-    const ctx = contextWith([...migrations, migration2()], faults)
+    const ctx = contextWith([...SCHEMA_1, migration2()], faults)
     const error = await upgradeSchema(target?.() ?? db, ctx).then(
       () => undefined,
       (reason: unknown) => reason
@@ -265,7 +269,7 @@ describe('upgradeSchema: a failed pre-migration backup means migration 2 never s
     db.close()
     replaceFolderWithFile(preMigrationFolder())
     await expect(
-      initializeDatabase(contextWith([...migrations, migration2()]))
+      initializeDatabase(contextWith([...SCHEMA_1, migration2()]))
     ).rejects.toMatchObject({ code: 'BACKUP_FAILED' })
     expect(migration2Ran).toBe(false)
     const check = temp.track(openDatabase(resolveDataPaths(temp.path).databaseFile))
@@ -295,7 +299,7 @@ describe('upgradeSchema: applied migration checksums are verified before anythin
 
   it('lists every applied migration whose checksum differs', async () => {
     const later = migration2()
-    await upgradeSchema(db, contextWith([...migrations, later]))
+    await upgradeSchema(db, contextWith([...SCHEMA_1, later]))
     expect(
       appliedChecksumMismatches(db, [
         { ...migrations[0], checksum: OTHER },
@@ -308,12 +312,12 @@ describe('upgradeSchema: applied migration checksums are verified before anythin
   })
 
   it('finds no mismatch when the checksums match, the history is absent, or a migration is unknown', async () => {
-    expect(appliedChecksumMismatches(db, migrations)).toEqual([])
+    expect(appliedChecksumMismatches(db, SCHEMA_1)).toEqual([])
     const empty = temp.track(openDatabase(temp.file('empty\\shop.db')))
     expect(appliedChecksumMismatches(empty, migrations)).toEqual([])
     // Version 2 is recorded but this app knows only version 1: a newer schema, reported as such elsewhere.
-    await upgradeSchema(db, contextWith([...migrations, migration2()]))
-    expect(appliedChecksumMismatches(db, migrations)).toEqual([])
+    await upgradeSchema(db, contextWith([...SCHEMA_1, migration2()]))
+    expect(appliedChecksumMismatches(db, SCHEMA_1)).toEqual([])
   })
 })
 
@@ -334,7 +338,7 @@ describe('upgradeSchema: a TEST-ONLY migration that breaks a reference is reject
         migration3Ran = true
       }
     )
-    const error = await upgradeSchema(db, contextWith([...migrations, orphan, later])).then(
+    const error = await upgradeSchema(db, contextWith([...SCHEMA_1, orphan, later])).then(
       () => undefined,
       (reason: unknown) => reason
     )
