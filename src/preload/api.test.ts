@@ -21,18 +21,34 @@ describe('createApi (the preload bridge)', () => {
       Object.entries(actions).map(([action, fn]) => `${domain}:${action}:${typeof fn}`)
     )
     expect(exposed).toEqual(ipcCalls.map((call) => `${call.channel}:function`))
-    expect(exposed).toEqual(['app:info:function'])
+    expect(exposed).toEqual([
+      'app:info:function',
+      'settings:get:function',
+      'settings:update:function',
+      'backup:status:function',
+      'backup:createManual:function',
+      'backup:openFolder:function',
+      'backup:selectRestoreCandidate:function',
+      'backup:restore:function',
+      'maintenance:integrityCheck:function'
+    ])
   })
 
   it('sends each call on its own channel with its input', async () => {
     const { sent, invoke } = recordingInvoke()
     const api = createApi(invoke)
     await expect(api.app.info()).resolves.toEqual({ ok: true, data: 'answer' })
+    await api.settings.update({ 'business.name': 'Ali Traders' })
+    await api.backup.restore({ token: 'a'.repeat(32), confirmation: 'RESTORE' })
     // Whatever a compromised renderer passes still goes to main, which validates it.
-    await (api.app.info as (input: unknown) => Promise<unknown>)({ path: 'C:\\Windows' })
+    await (api.backup.createManual as (input: unknown) => Promise<unknown>)({
+      path: 'C:\\Windows\\x.db'
+    })
     expect(sent).toEqual([
       ['app:info', undefined],
-      ['app:info', { path: 'C:\\Windows' }]
+      ['settings:update', { 'business.name': 'Ali Traders' }],
+      ['backup:restore', { token: 'a'.repeat(32), confirmation: 'RESTORE' }],
+      ['backup:createManual', { path: 'C:\\Windows\\x.db' }]
     ])
   })
 
@@ -48,15 +64,16 @@ describe('createApi (the preload bridge)', () => {
     const forbidden = ['invoke', 'send', 'sendSync', 'on', 'once', 'postMessage', 'ipcRenderer']
     for (const name of forbidden) {
       expect(name in api).toBe(false)
-      expect(name in api.app).toBe(false)
+      for (const domain of Object.values(api)) expect(name in domain).toBe(false)
     }
   })
 
   it('is frozen, so functions cannot be added or replaced', () => {
     const api = createApi(recordingInvoke().invoke)
     expect(Object.isFrozen(api)).toBe(true)
-    expect(Object.isFrozen(api.app)).toBe(true)
+    for (const domain of Object.values(api)) expect(Object.isFrozen(domain)).toBe(true)
     expect(Reflect.set(api.app, 'info', () => 'replaced')).toBe(false)
+    expect(Reflect.set(api.backup, 'restore', () => 'replaced')).toBe(false)
     expect(Reflect.set(api, 'shell', {})).toBe(false)
   })
 })

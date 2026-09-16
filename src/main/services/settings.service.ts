@@ -1,34 +1,26 @@
 import { z } from 'zod'
-import { MAX_MINOR_DIGITS } from '@shared/domain/guards'
+import {
+  EDITABLE_SETTING_KEYS,
+  EditableSettingsPatchSchema,
+  SETTING_SCHEMAS,
+  type EditableSettings,
+  type SettingKey,
+  type Settings
+} from '@shared/settings'
 import type { Db } from '../db/adapter'
 import { AppFailure, fieldErrorsOf } from '../errors'
 import type { Logger } from '../logging'
 
 /*
- * The typed settings backend over the `settings` table, where each value is stored as JSON. Only the keys defined
- * here can be read or written through it: there is no generic key/value access. There is no negative-stock
- * setting (plan §8.3). The business effect of a change, such as applying invoice.startNumber to the invoice
- * sequence, belongs to the phase that uses the setting. No IPC yet: Phase 4B adds the Settings screen.
+ * The typed settings backend over the `settings` table, where each value is stored as JSON. Only the keys defined in
+ * @shared/settings can be read or written through it: there is no generic key/value access. There is no
+ * negative-stock setting (plan §8.3). The Settings screen reads and edits the business, currency and invoice settings
+ * through `window.api.settings` (readEditableSettings, updateEditableSettings); the backup keys are not exposed. The
+ * business effect of a change, such as applying invoice.startNumber to the invoice sequence, belongs to the phase that
+ * uses the setting.
  */
 
-export const SETTING_SCHEMAS = {
-  'business.name': z.string().trim().min(1).max(100),
-  'currency.code': z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code, such as PKR.'),
-  'currency.symbol': z.string().trim().min(1).max(8),
-  'currency.minorDigits': z.number().int().min(0).max(MAX_MINOR_DIGITS),
-  'invoice.prefix': z
-    .string()
-    .regex(/^[A-Za-z0-9._-]{0,12}$/, 'Use up to 12 letters, digits, dots, dashes or underscores.'),
-  'invoice.padding': z.number().int().min(1).max(10),
-  'invoice.startNumber': z.number().int().min(1).max(999_999_999),
-  'invoice.paperSize': z.enum(['A4', 'A5']),
-  'backup.autoEnabled': z.boolean(),
-  'backup.keepDaily': z.number().int().min(1).max(365),
-  'backup.keepMonthly': z.number().int().min(0).max(120)
-} as const
-
-export type SettingKey = keyof typeof SETTING_SCHEMAS
-export type Settings = { readonly [K in SettingKey]: z.output<(typeof SETTING_SCHEMAS)[K]> }
+export { SETTING_SCHEMAS, type SettingKey, type Settings } from '@shared/settings'
 
 export const SETTING_KEYS: readonly SettingKey[] = Object.freeze(
   Object.keys(SETTING_SCHEMAS) as SettingKey[]
@@ -49,7 +41,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   'backup.keepMonthly': 12
 })
 
-/** An update: any subset of the known settings. An unknown key is refused (the future IPC input schema). */
+/** An update: any subset of the known settings. An unknown key is refused. */
 export const SettingsPatchSchema = z.strictObject(SETTING_SCHEMAS).partial()
 
 /**
@@ -81,13 +73,7 @@ export function readSettings(db: Db, log?: Pick<Logger, 'warn'>): Settings {
  */
 export function updateSettings(db: Db, patch: unknown): Settings {
   const parsed = SettingsPatchSchema.safeParse(patch)
-  if (!parsed.success) {
-    throw new AppFailure({
-      code: 'VALIDATION',
-      message: 'The settings are not valid.',
-      fieldErrors: fieldErrorsOf(parsed.error)
-    })
-  }
+  if (!parsed.success) throw invalidSettings(parsed.error)
   const changes = Object.entries(parsed.data).filter(([, value]) => value !== undefined)
   db.transaction(() => {
     for (const [key, value] of changes) {
@@ -100,6 +86,35 @@ export function updateSettings(db: Db, patch: unknown): Settings {
     }
   })
   return readSettings(db)
+}
+
+/** The settings the Settings screen shows: business, currency and invoice (EDITABLE_SETTING_KEYS). */
+export function readEditableSettings(db: Db, log?: Pick<Logger, 'warn'>): EditableSettings {
+  return editableOf(readSettings(db, log))
+}
+
+/**
+ * Saves a change made on the Settings screen. Only the editable settings are accepted: a backup setting or any other
+ * key is refused with VALIDATION and nothing changes. Then updateSettings validates and writes it in one transaction.
+ */
+export function updateEditableSettings(db: Db, patch: unknown): EditableSettings {
+  const parsed = EditableSettingsPatchSchema.safeParse(patch)
+  if (!parsed.success) throw invalidSettings(parsed.error)
+  return editableOf(updateSettings(db, parsed.data))
+}
+
+function invalidSettings(error: z.ZodError): AppFailure {
+  return new AppFailure({
+    code: 'VALIDATION',
+    message: 'The settings are not valid.',
+    fieldErrors: fieldErrorsOf(error)
+  })
+}
+
+function editableOf(settings: Settings): EditableSettings {
+  return Object.fromEntries(
+    EDITABLE_SETTING_KEYS.map((key) => [key, settings[key]])
+  ) as unknown as EditableSettings
 }
 
 function parseJson(text: string | undefined): unknown {

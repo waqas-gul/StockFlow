@@ -14,7 +14,9 @@ import {
   DEFAULT_SETTINGS,
   SETTING_KEYS,
   SettingsPatchSchema,
+  readEditableSettings,
   readSettings,
+  updateEditableSettings,
   updateSettings
 } from './settings.service'
 
@@ -250,8 +252,62 @@ describe('updateSettings', () => {
 })
 
 describe('SettingsPatchSchema', () => {
-  it('is strict: the future IPC input for settings accepts known keys only', () => {
+  it('is strict: it accepts known keys only', () => {
     expect(SettingsPatchSchema.safeParse({ 'business.name': 'Shop' }).success).toBe(true)
     expect(SettingsPatchSchema.safeParse({ 'business.name': 'Shop', extra: 1 }).success).toBe(false)
+  })
+})
+
+describe('the Settings screen: readEditableSettings and updateEditableSettings', () => {
+  const EDITABLE = {
+    'business.name': 'StockFlow',
+    'currency.code': 'PKR',
+    'currency.symbol': 'Rs',
+    'currency.minorDigits': 2,
+    'invoice.prefix': 'INV-',
+    'invoice.padding': 6,
+    'invoice.startNumber': 1,
+    'invoice.paperSize': 'A4'
+  }
+
+  it('reads the business, currency and invoice settings, and no backup setting', () => {
+    expect(readEditableSettings(db)).toEqual(EDITABLE)
+  })
+
+  it('saves a change in one transaction and returns the editable settings', () => {
+    expect(
+      updateEditableSettings(db, { 'business.name': ' Ali Traders ', 'currency.minorDigits': 0 })
+    ).toEqual({ ...EDITABLE, 'business.name': 'Ali Traders', 'currency.minorDigits': 0 })
+    expect(stored('business.name')).toBe('"Ali Traders"')
+    expect(stored('currency.minorDigits')).toBe('0')
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['turning automatic backups off', { 'backup.autoEnabled': false }],
+    ['changing the daily retention', { 'backup.keepDaily': 1 }],
+    ['changing the monthly retention', { 'backup.keepMonthly': 0 }],
+    ['an unknown key next to a valid one', { 'business.name': 'Shop', 'x.unknown': 1 }]
+  ])('refuses %s and changes nothing', (_label, patch) => {
+    const before = allRows()
+    expect(validationFailure(() => updateEditableSettings(db, patch)).error).toMatchObject({
+      code: 'VALIDATION',
+      fieldErrors: { root: [expect.any(String)] }
+    })
+    expect(allRows()).toEqual(before)
+  })
+
+  it.each<[string, unknown, string]>([
+    ['business.name', '  ', 'Enter the business name.'],
+    ['currency.code', 'pkr', 'Use a three-letter currency code, such as PKR.'],
+    ['currency.symbol', '', 'Enter the currency symbol.'],
+    ['currency.minorDigits', 5, 'Enter a whole number from 0 to 4.'],
+    ['invoice.prefix', 'INV /', 'Use up to 12 letters, digits, dots, dashes or underscores.'],
+    ['invoice.padding', 0, 'Enter a whole number from 1 to 10.'],
+    ['invoice.startNumber', 1.5, 'Enter a whole number from 1 to 999,999,999.'],
+    ['invoice.paperSize', 'Letter', 'Choose A4 or A5.']
+  ])('explains an invalid %s in plain words', (key, value, message) => {
+    expect(
+      validationFailure(() => updateEditableSettings(db, { [key]: value })).error.fieldErrors
+    ).toEqual({ [key]: [message] })
   })
 })

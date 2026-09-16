@@ -8,7 +8,12 @@ import { openSqlite, type Db } from '../db/adapter'
 import { createTempDir, type TempDir } from '../db/test-utils'
 import { AppFailure } from '../errors'
 import type { LogContext } from '../logging'
-import { createIpcHandler, registerIpcHandlers, type HandlerOptions } from './handle'
+import {
+  createIpcHandler,
+  registerIpcHandlers,
+  type HandlerOptions,
+  type IpcHandlers
+} from './handle'
 
 const APP_URL = 'file:///C:/Program%20Files/StockFlow/resources/app.asar/out/renderer/index.html'
 
@@ -298,9 +303,13 @@ describe('registerIpcHandlers', () => {
 
   it('registers one validating listener per call, on channel <domain>:<action>', async () => {
     const listeners = new Map<string, (event: IpcMainInvokeEvent, input?: unknown) => unknown>()
+    // One handler is enough: registration does not depend on the contract's other calls.
+    const handlers = {
+      app: { info: { input: z.undefined(), run: () => info } }
+    } as unknown as IpcHandlers
     const channels = registerIpcHandlers(
       { handle: (channel, listener) => listeners.set(channel, listener) },
-      { app: { info: { input: z.undefined(), run: () => info } } },
+      handlers,
       testOptions()
     )
     expect(channels).toEqual(['app:info'])

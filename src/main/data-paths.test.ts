@@ -5,6 +5,7 @@ import {
   backupFolder,
   isSameOrInside,
   resolveDataPaths,
+  toDisplayLocation,
   toDisplayPath
 } from './data-paths'
 
@@ -83,5 +84,28 @@ describe('toDisplayPath', () => {
   it('shows only the last folder name for a path outside AppData', () => {
     expect(toDisplayPath('D:\\Private\\Shop\\data', appData)).toBe('…\\data')
     expect(toDisplayPath('C:\\Users\\owner\\AppData\\RoamingX\\data', appData)).toBe('…\\data')
+  })
+})
+
+describe('toDisplayLocation', () => {
+  const home = 'C:\\Users\\owner'
+
+  it('hides the user path of a folder inside AppData or the profile', () => {
+    expect(toDisplayLocation(`${appData}\\StockFlow\\exports`, appData, home)).toBe(
+      '%APPDATA%\\StockFlow\\exports'
+    )
+    expect(toDisplayLocation('c:\\users\\OWNER\\Documents\\Shop backups', appData, home)).toBe(
+      '%USERPROFILE%\\Documents\\Shop backups'
+    )
+    expect(toDisplayLocation(home, appData, home)).toBe('%USERPROFILE%')
+  })
+
+  it('shows any other folder, such as a USB or second drive, as it is', () => {
+    expect(toDisplayLocation('E:\\', appData, home)).toBe('E:\\')
+    expect(toDisplayLocation('E:\\StockFlow backups', appData, home)).toBe('E:\\StockFlow backups')
+    expect(toDisplayLocation('D:\\Shop\\..\\Backups', appData, home)).toBe('D:\\Backups')
+    expect(toDisplayLocation('C:\\Users\\owner2\\Backups', appData, home)).toBe(
+      'C:\\Users\\owner2\\Backups'
+    )
   })
 })

@@ -1,16 +1,16 @@
 import type { RouteObject } from 'react-router'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
+import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { AppShell } from './layout/AppShell'
-import { allNavItems } from './navigation'
+import { allNavItems, settingsNavItem } from './navigation'
 import { NotFoundPage } from './NotFoundPage'
 import { RouteErrorPage } from './RouteErrorPage'
 
-// Every section is a placeholder until its phase replaces the Component.
-const sectionRoutes: RouteObject[] = allNavItems.map((item) =>
-  item.path === '/'
-    ? { index: true, Component: PlaceholderPage }
-    : { path: item.path.slice(1), Component: PlaceholderPage }
-)
+// Settings is implemented (Phase 4B); every other section is a placeholder until its phase replaces the Component.
+const sectionRoutes: RouteObject[] = allNavItems.map((item) => {
+  const Component = item.path === settingsNavItem.path ? SettingsPage : PlaceholderPage
+  return item.path === '/' ? { index: true, Component } : { path: item.path.slice(1), Component }
+})
 
 export const routes: RouteObject[] = [
   {

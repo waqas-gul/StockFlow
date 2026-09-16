@@ -2,7 +2,16 @@
 //
 // No runtime imports: the sandboxed preload bundles this file and cannot load packages such as Zod.
 // Input validation lives with each handler in the main process (src/main/ipc).
+import type { EditableSettings, EditableSettingsPatch } from './settings'
 import type { AppInfo } from './types/app-info'
+import type {
+  BackupStatus,
+  ManualBackupResult,
+  RestoreCandidateSelection,
+  RestoreRequest,
+  RestoreResult
+} from './types/backup'
+import type { IntegrityCheckReport } from './types/maintenance'
 import type { Result } from './types/result'
 
 declare const callTypes: unique symbol
@@ -19,11 +28,35 @@ function call<Input, Output>(): IpcCall<Input, Output> {
 /**
  * Every call the renderer may make, as domain → action. The channel is `<domain>:<action>` and the renderer
  * calls it as `window.api.<domain>.<action>(input)`. Nothing outside this map is reachable over IPC.
+ *
+ * No call takes a file-system path: the main process opens the file dialogs and keeps the paths they return.
  */
 export const ipcContract = Object.freeze({
   app: Object.freeze({
     /** Safe, display-only facts about the app and its database. */
     info: call<void, AppInfo>()
+  }),
+  settings: Object.freeze({
+    /** The business, currency and invoice settings. */
+    get: call<void, EditableSettings>(),
+    /** Saves any of them (validated again by the main process) and returns them all. */
+    update: call<EditableSettingsPatch, EditableSettings>()
+  }),
+  backup: Object.freeze({
+    /** Automatic and manual backup status. */
+    status: call<void, BackupStatus>(),
+    /** Asks where to save (the main process's Save dialog), then writes a verified backup there. */
+    createManual: call<void, ManualBackupResult>(),
+    /** Opens the automatic backup folder in File Explorer. */
+    openFolder: call<void, void>(),
+    /** Asks for a backup (the main process's Open dialog), validates it, and returns its summary and a token. */
+    selectRestoreCandidate: call<void, RestoreCandidateSelection>(),
+    /** Restores the backup confirmed with that token; StockFlow then restarts. */
+    restore: call<RestoreRequest, RestoreResult>()
+  }),
+  maintenance: Object.freeze({
+    /** Runs the read-only integrity check and reports it in plain language. */
+    integrityCheck: call<void, IntegrityCheckReport>()
   })
 })
 

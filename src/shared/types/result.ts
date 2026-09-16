@@ -1,6 +1,11 @@
 /**
  * Error codes the main process returns to the renderer, which switches on `code`. The business codes
  * (stock, prices, posting dates) are produced by the services of later phases.
+ *
+ * - BACKUP_FAILED: a manual backup was not made (nothing was written or replaced).
+ * - RESTORE_REJECTED: the chosen backup cannot be restored, or the confirmation is no longer valid.
+ * - RESTORE_FAILED: the restore stopped before it changed anything; StockFlow keeps running on the current data.
+ * - FORBIDDEN_STATE also covers a backup or restore that is already running, and a restart in progress.
  */
 export type AppErrorCode =
   | 'VALIDATION'
@@ -12,6 +17,9 @@ export type AppErrorCode =
   | 'FORBIDDEN_STATE'
   | 'DATE_NOT_ALLOWED'
   | 'FORBIDDEN'
+  | 'BACKUP_FAILED'
+  | 'RESTORE_REJECTED'
+  | 'RESTORE_FAILED'
   | 'DB_ERROR'
   | 'INTERNAL'
 

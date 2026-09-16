@@ -38,6 +38,11 @@ the verified backups in `backups\auto`, `backups\pre-migration` and `backups\pre
 changes a database that holds data, a verified backup is written to `backups\pre-migration`; if it fails, the
 migration does not run.
 
+Settings → Backup & Restore makes backups at any time ("Backup Now", saved wherever the user chooses, for example a
+USB drive) and restores a backup after a typed confirmation, then restarts StockFlow. Automatic backups are made on
+the first use of each day and at a normal quit (at most one an hour) in `backups\auto`. `backups\backup-status.json`
+records the last manual backup, the last failed automatic backup and the last restore; it holds no business data.
+
 When a backup is restored over a damaged database (one that fails its checks, so it cannot have a verified backup),
 the damaged database is moved unchanged to `recovery\damaged-live-db_<date>_<time>.db`, with its `-wal` and `-shm`
 files. These files are not backups: they are kept only in case a specialist needs them. StockFlow also refuses to

@@ -27,6 +27,7 @@ import { verifyDatabaseFile, type DatabaseFileReport, type RecordCounts } from '
 export type BackupErrorCode =
   | 'UNSAFE_DESTINATION'
   | 'DESTINATION_UNAVAILABLE'
+  | 'DESTINATION_EXISTS'
   | 'COPY_FAILED'
   | 'VERIFICATION_FAILED'
   | 'FINALIZE_FAILED'
@@ -58,6 +59,15 @@ export interface BackupInfo {
   readonly sidecarWritten: boolean
 }
 
+export interface BackupOptions {
+  /**
+   * The file name the user gave a manual backup in the Save dialog: a plain file name ending in .db. If a file
+   * already has that name, the backup fails with DESTINATION_EXISTS; nothing is ever replaced. By default, the first
+   * free StockFlow backup name for this second is used.
+   */
+  readonly fileName?: string
+}
+
 /** The `format` of a StockFlow backup sidecar. */
 export const SIDECAR_FORMAT = 'stockflow-backup-sidecar'
 
@@ -71,16 +81,19 @@ const MAX_SIDECAR_BYTES = 64 * 1024
  * 2. it is verified: made self-contained, then StockFlow application_id, schema version, integrity_check and
  *    foreign_key_check (verify.ts);
  * 3. only then is it renamed to `<name>.db`, a name no file has (an existing file is never replaced);
- * 4. an optional JSON sidecar with a safe summary is written next to it.
+ * 4. an optional JSON sidecar with a safe summary is written next to it (never replacing a file either).
+ *
+ * `<name>` is a generated StockFlow backup name, or the name chosen for a manual backup (`options.fileName`).
  *
  * On any failure the temporary file is removed, existing backups are left untouched, the failure is logged and a
- * BackupError is thrown. `directory` is chosen by the main process, never by the renderer, and is never the data
- * folder of the live database.
+ * BackupError is thrown. `directory` is chosen by the main process (for a manual backup, through its Save dialog),
+ * never by the renderer, and is never the data folder of the live database.
  */
 export async function createVerifiedBackup(
   db: Db,
   directory: string,
-  ctx: DataSafetyContext
+  ctx: DataSafetyContext,
+  options: BackupOptions = {}
 ): Promise<BackupInfo> {
   const started = Date.now()
   let tempFile: string | undefined
@@ -96,7 +109,10 @@ export async function createVerifiedBackup(
       })
     }
     const time = ctx.now()
-    const file = freeBackupFile(directory, time, ctx.appVersion, readUserVersion(db))
+    const file =
+      options.fileName === undefined
+        ? freeBackupFile(directory, time, ctx.appVersion, readUserVersion(db))
+        : namedBackupFile(directory, options.fileName)
     tempFile = `${file}.tmp`
     try {
       await db.backup(tempFile)
@@ -234,10 +250,33 @@ function freeBackupFile(
   )
 }
 
+/** The file of a backup with a chosen name, when neither a file nor a backup in progress has that name. */
+function namedBackupFile(directory: string, fileName: string): string {
+  if (win32.basename(fileName) !== fileName || !/\.db$/i.test(fileName)) {
+    throw new BackupError(
+      'DESTINATION_UNAVAILABLE',
+      'A backup file name must be a plain file name ending in .db.'
+    )
+  }
+  const file = win32.join(directory, fileName)
+  if (existsSync(file) || existsSync(`${file}.tmp`)) {
+    throw new BackupError('DESTINATION_EXISTS', `${fileName} already exists; it is never replaced.`)
+  }
+  return file
+}
+
 /** Safe summary metadata only: no names, amounts or other business data. */
 function writeSidecar(backup: Omit<BackupInfo, 'sidecarWritten'>, log: Logger): boolean {
   const file = sidecarFileOf(backup.file)
   const tempFile = `${file}.tmp`
+  // Next to a manual backup, a file of the user's may have the sidecar's name: it is never replaced.
+  if (isFile(file) || isFile(tempFile)) {
+    log.warn(
+      '[backup] the sidecar was not written: a file with its name already exists; the backup itself is valid',
+      { file: backup.fileName }
+    )
+    return false
+  }
   const sidecar = {
     format: SIDECAR_FORMAT,
     formatVersion: 1,
@@ -273,6 +312,14 @@ function removeTemporaryFiles(tempFile: string, log: Logger): void {
         code: errorCodeOf(error)
       })
     }
+  }
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
   }
 }
 

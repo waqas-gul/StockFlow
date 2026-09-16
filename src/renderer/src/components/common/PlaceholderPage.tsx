@@ -8,8 +8,6 @@ import {
   CardHeader,
   CardTitle
 } from '@renderer/components/ui/card'
-import { AboutCard } from './AboutCard'
-import { DevChecks } from './DevChecks'
 
 /** Temporary screen for a navigation section until its phase implements it. */
 export function PlaceholderPage(): React.JSX.Element {
@@ -34,9 +32,6 @@ export function PlaceholderPage(): React.JSX.Element {
           This section is a placeholder. No data is stored or shown yet.
         </CardContent>
       </Card>
-
-      {item.path === '/settings' && <AboutCard />}
-      {import.meta.env.DEV && item.path === '/settings' && <DevChecks />}
     </div>
   )
 }

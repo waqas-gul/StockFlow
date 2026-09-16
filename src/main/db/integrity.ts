@@ -47,6 +47,9 @@ export interface IntegrityCheckOptions {
 
 const MAX_ISSUES = 20
 
+/** The summary of a check that could not run; it is reported as an ERROR. */
+export const CHECK_FAILED_SUMMARY = 'The check could not run.'
+
 interface Finding {
   readonly status: CheckStatus
   readonly summary: string
@@ -320,7 +323,7 @@ function runCheck(id: IntegrityCheckId, title: string, check: () => Finding): In
   try {
     finding = check()
   } catch (failure) {
-    finding = error('The check could not run.', [
+    finding = error(CHECK_FAILED_SUMMARY, [
       failure instanceof Error ? failure.message : String(failure)
     ])
   }

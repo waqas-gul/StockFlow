@@ -402,6 +402,58 @@ describe('createCategoryBackup', () => {
   })
 })
 
+describe('createVerifiedBackup with a chosen file name (manual backups)', () => {
+  const usb = (): string => temp.file('usb')
+
+  it('writes the verified backup under that name, with its sidecar next to it', async () => {
+    const backup = await createVerifiedBackup(db, usb(), ctx, { fileName: 'Shop backup.db' })
+    expect(backup).toMatchObject({
+      file: win32.join(usb(), 'Shop backup.db'),
+      fileName: 'Shop backup.db',
+      schemaVersion: 1,
+      sidecarWritten: true
+    })
+    expect(listing(usb())).toEqual(['Shop backup.db', 'Shop backup.json'])
+    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(1)
+  })
+
+  it('never replaces a file: a name that is taken, or being written, fails with DESTINATION_EXISTS', async () => {
+    mkdirSync(usb(), { recursive: true })
+    writeFileSync(win32.join(usb(), 'taken.db'), 'a file of the user')
+    writeFileSync(win32.join(usb(), 'busy.db.tmp'), 'a backup in progress')
+    for (const fileName of ['taken.db', 'busy.db']) {
+      const error = await backupError(createVerifiedBackup(db, usb(), ctx, { fileName }))
+      expect(error.code).toBe('DESTINATION_EXISTS')
+    }
+    expect(readFileSync(win32.join(usb(), 'taken.db'), 'utf8')).toBe('a file of the user')
+    expect(listing(usb())).toEqual(['busy.db.tmp', 'taken.db'])
+  })
+
+  it.each(['..\\shop.db', 'backups\\copy.db', 'notes.txt', 'copy.db.bak'])(
+    'refuses %s, which is not a plain .db file name',
+    async (fileName) => {
+      const error = await backupError(createVerifiedBackup(db, usb(), ctx, { fileName }))
+      expect(error.code).toBe('DESTINATION_UNAVAILABLE')
+      expect(listing(usb())).toEqual([])
+    }
+  )
+
+  it('never replaces a file that has the sidecar name: the backup stays valid without a sidecar', async () => {
+    mkdirSync(usb(), { recursive: true })
+    writeFileSync(win32.join(usb(), 'copy.json'), '{"mine":true}')
+    const backup = await createVerifiedBackup(db, usb(), ctx, { fileName: 'copy.db' })
+    expect(backup.sidecarWritten).toBe(false)
+    expect(readFileSync(win32.join(usb(), 'copy.json'), 'utf8')).toBe('{"mine":true}')
+    expect(verifyDatabaseFile(backup.file).schemaVersion).toBe(1)
+    expect(ctx.log.entries).toContainEqual({
+      level: 'WARN',
+      message:
+        '[backup] the sidecar was not written: a file with its name already exists; the backup itself is valid',
+      context: { file: 'copy.db' }
+    })
+  })
+})
+
 describe('ensureBackupFolders', () => {
   it('creates the auto, pre-migration and pre-restore folders', () => {
     ensureBackupFolders(ctx.paths)

@@ -8,3 +8,19 @@ export const appInfoQuery = queryOptions({
   queryFn: () => unwrap(window.api.app.info()),
   staleTime: Infinity
 })
+
+/** `window.api.settings.get()`: the business, currency and invoice settings. */
+export const settingsQuery = queryOptions({
+  queryKey: queryKeys.settings,
+  queryFn: () => unwrap(window.api.settings.get())
+})
+
+/**
+ * `window.api.backup.status()`. Refreshed every minute, so an automatic backup that fails while StockFlow runs shows
+ * up in the top bar and in Settings.
+ */
+export const backupStatusQuery = queryOptions({
+  queryKey: queryKeys.backup.status,
+  queryFn: () => unwrap(window.api.backup.status()),
+  refetchInterval: 60_000
+})

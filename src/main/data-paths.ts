@@ -71,3 +71,22 @@ export function toDisplayPath(target: string, appDataPath: string): string {
   }
   return win32.join('%APPDATA%', relative)
 }
+
+/**
+ * A folder the user chose (where a manual backup was saved), for display in the renderer. Inside AppData or the
+ * user's profile that part is shown as %APPDATA% or %USERPROFILE%, so the Windows user name never leaves the main
+ * process; any other folder, such as one on a USB drive or a second drive, is shown as it is.
+ */
+export function toDisplayLocation(target: string, appDataPath: string, homePath: string): string {
+  const places: ReadonlyArray<readonly [folder: string, placeholder: string]> = [
+    [appDataPath, '%APPDATA%'],
+    [homePath, '%USERPROFILE%']
+  ]
+  for (const [folder, placeholder] of places) {
+    if (isSameOrInside(target, folder)) {
+      const relative = win32.relative(folder, target)
+      return relative === '' ? placeholder : win32.join(placeholder, relative)
+    }
+  }
+  return win32.normalize(target)
+}
