@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
 import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
+import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
@@ -12,9 +13,11 @@ import { allNavItems, settingsNavItem } from './navigation'
 import { NotFoundPage } from './NotFoundPage'
 import { RouteErrorPage } from './RouteErrorPage'
 
-// Implemented sections: Products (Phase 5), Stock In and Stock Adjustments (Phase 6), Customers and Payments (Phase 7)
-// and Settings (Phase 4B). Every other section is a placeholder until its phase replaces the Component.
+// Implemented sections: Products (Phase 5), Stock In and Stock Adjustments (Phase 6), Customers and Payments (Phase 7),
+// New Invoice (Phase 8B) and Settings (Phase 4B). Every other section is a placeholder until its phase replaces the
+// Component.
 const implemented: Readonly<Record<string, React.ComponentType>> = {
+  '/invoices/new': NewInvoicePage,
   '/products': ProductsPage,
   '/stock/in': StockInPage,
   '/stock/adjustments': StockAdjustmentsPage,

@@ -44,6 +44,16 @@ export const PRICE_TIER_LABELS: Readonly<Record<PriceTier, string>> = Object.fre
 
 export type InvoiceStatus = 'POSTED' | 'VOID'
 
+/**
+ * The walk-in customer (C-00001) only buys for cash: the amount received must equal the invoice total (0 for a zero
+ * total), so a walk-in balance never becomes due or an advance.
+ */
+export const WALK_IN_FULL_PAYMENT_MESSAGE =
+  'Walk-in sales must be paid in full. Select a customer account for credit sales.'
+
+/** `details.rule` of the refusal above, so the billing screen can recognise it without reading the message. */
+export const WALK_IN_FULL_PAYMENT_RULE = 'WALK_IN_FULL_PAYMENT'
+
 /** An amount the operator entered, in integer minor units: zero or more. */
 const AmountSchema = z
   .number({ error: 'Enter the amount.' })
@@ -183,6 +193,29 @@ export const InvoiceCreateSchema = z
 export type InvoiceCreateInput = z.output<typeof InvoiceCreateSchema>
 
 export const InvoiceIdSchema = IdSchema
+
+/** The billing screen's context: the next number and the posting-date floor of the chosen customer and products. */
+export const InvoiceContextInputSchema = z.strictObject({
+  customerId: IdSchema.nullable(),
+  productIds: z.array(IdSchema).max(MAX_INVOICE_LINES)
+})
+export type InvoiceContextInput = z.output<typeof InvoiceContextInputSchema>
+
+export interface InvoiceContext {
+  /** The main process's calendar day: the latest date allowed. */
+  readonly today: string
+  /** The number the next invoice would get. A preview only: nothing is reserved until an invoice is posted. */
+  readonly nextInvoiceNo: string
+  /** The earliest date allowed for this customer and these products; null when none of them has activity. */
+  readonly earliestDate: string | null
+  /** Whose latest activity sets earliestDate (the later one when both have activity). */
+  readonly earliestDateSetBy: {
+    readonly kind: 'CUSTOMER' | 'PRODUCT'
+    readonly id: number
+    readonly code: string
+    readonly name: string
+  } | null
+}
 
 /** 'INV-', padding 6 and 12 → 'INV-000012'. A number longer than the padding is written in full. */
 export function formatInvoiceNumber(prefix: string, padding: number, value: number): string {

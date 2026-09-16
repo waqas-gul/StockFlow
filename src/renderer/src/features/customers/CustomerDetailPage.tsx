@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, HandCoins, Info, Pencil, Power, PowerOff, Scale } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
-import type { Customer, CustomerLedger } from '@shared/customers'
+import { isWalkInCustomer, type Customer, type CustomerLedger } from '@shared/customers'
 import { formatDisplayDate } from '@shared/dates'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import {
@@ -288,10 +288,13 @@ export function CustomerDetailView({
             <Pencil aria-hidden />
             Edit Customer
           </Button>
-          <Button variant="ghost" onClick={onToggleActive} disabled={busy}>
-            {customer.isActive ? <PowerOff aria-hidden /> : <Power aria-hidden />}
-            {customer.isActive ? 'Deactivate' : 'Reactivate'}
-          </Button>
+          {/* The walk-in customer is always active; an old inactive one can still be reactivated. */}
+          {!(isWalkInCustomer(customer.code) && customer.isActive) && (
+            <Button variant="ghost" onClick={onToggleActive} disabled={busy}>
+              {customer.isActive ? <PowerOff aria-hidden /> : <Power aria-hidden />}
+              {customer.isActive ? 'Deactivate' : 'Reactivate'}
+            </Button>
+          )}
         </CardContent>
       </Card>
 

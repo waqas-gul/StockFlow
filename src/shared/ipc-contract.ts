@@ -17,6 +17,12 @@ import type {
   ListPage
 } from './customers'
 import type {
+  InvoiceContext,
+  InvoiceContextInput,
+  InvoiceCreateInput,
+  InvoiceSaveResult
+} from './invoices'
+import type {
   DuplicatePaymentCheck,
   PaymentCreateInput,
   PaymentDetail,
@@ -183,6 +189,15 @@ export const ipcContract = Object.freeze({
     checkDuplicate: call<PaymentDuplicateCheckInput, DuplicatePaymentCheck>(),
     /** Voids a posted payment, dated today, adding its amount back to the balance. */
     void: call<PaymentVoidInput, PaymentVoidResult>()
+  }),
+  invoices: Object.freeze({
+    /** The billing screen's context: today, the next invoice number (a preview) and the posting-date floor. */
+    context: call<InvoiceContextInput, InvoiceContext>(),
+    /**
+     * Posts an invoice with its stock movements, ledger entries and counter payment, in one transaction (a repeated
+     * request id returns the saved invoice).
+     */
+    post: call<InvoiceCreateInput, InvoiceSaveResult>()
   })
 })
 

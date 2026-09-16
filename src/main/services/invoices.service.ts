@@ -1,3 +1,4 @@
+import { isWalkInCustomer } from '@shared/customers'
 import { localDateString } from '@shared/dates'
 import { applyOutflow, formatMoney, sumMinor } from '@shared/domain'
 import {
@@ -6,10 +7,14 @@ import {
   type InvoiceTotals
 } from '@shared/invoice-totals'
 import {
+  InvoiceContextInputSchema,
   InvoiceCreateSchema,
   InvoiceIdSchema,
   PRICE_TIER_LABELS,
+  WALK_IN_FULL_PAYMENT_MESSAGE,
+  WALK_IN_FULL_PAYMENT_RULE,
   formatInvoiceNumber,
+  type InvoiceContext,
   type InvoiceCreateInput,
   type InvoiceDetail,
   type InvoiceLine,
@@ -53,7 +58,8 @@ import { assertCurrencyDigits, readSettings } from './settings.service'
  *   active; the unit belongs to the product and can be sold) → posting date (≤ today, ≥ the customer's latest ledger
  *   entry and ≥ the latest stock movement of every product on the invoice) → prices (the configured price of the tier
  *   unless the row is marked as an override; no fallback to the other tier) → totals (invoice-totals.ts, from database
- *   unit sizes and the accepted prices) → stock (Q ≥ paid + free quantity per product) → COGS → INV- number →
+ *   unit sizes and the accepted prices) → the walk-in customer pays exactly the total → stock (Q ≥ paid + free quantity
+ *   per product) → COGS → INV- number →
  *   header → per line: item, quantity rows, SALE movement → INVOICE ledger entry (+total, when above zero) → payment
  *   and PAYMENT ledger entry (when money was received) → stock invariants → customer balance check.
  *
@@ -188,6 +194,7 @@ export function createInvoice(db: Db, input: unknown, now: Date): InvoiceSaveRes
 
     const previousBalanceMinor = customerBalance(db, customer.id)
     const totals = invoiceTotals(invoice, resolved, previousBalanceMinor)
+    assertWalkInPaidInFull(customer, totals)
     const lines = resolved.map((line, index) => ({ ...line, totals: totals.lines[index] }))
     assertStockAvailable(db, lines)
     const costs = saleCosts(db, lines)
@@ -271,7 +278,68 @@ export function getInvoice(db: Db, id: unknown): InvoiceDetail {
   return readInvoice(db, parseInput(InvoiceIdSchema, id))
 }
 
+/**
+ * What the billing screen shows before posting: today, the number the next invoice would get (nothing is reserved), and
+ * the earliest date the chosen customer and products allow, with whose activity sets it.
+ */
+export function invoiceContext(db: Db, input: unknown, now: Date): InvoiceContext {
+  const { customerId, productIds } = parseInput(InvoiceContextInputSchema, input)
+  const customer = customerId === null ? null : customerRow(db, customerId)
+  const customerFloor = customer === null ? null : latestLedgerDate(db, customer.id)
+  const productFloor = latestMovement(db, productIds)
+  let floor: Pick<InvoiceContext, 'earliestDate' | 'earliestDateSetBy'> = {
+    earliestDate: null,
+    earliestDateSetBy: null
+  }
+  // The later floor wins, exactly as posting checks it.
+  if (productFloor !== null && (customerFloor === null || productFloor.date > customerFloor)) {
+    const product = db.get<{ id: number; code: string; name: string }>(
+      'SELECT id, code, name FROM products WHERE id = ?',
+      [productFloor.productId]
+    )!
+    floor = {
+      earliestDate: productFloor.date,
+      earliestDateSetBy: { kind: 'PRODUCT', id: product.id, code: product.code, name: product.name }
+    }
+  } else if (customer !== null && customerFloor !== null) {
+    floor = {
+      earliestDate: customerFloor,
+      earliestDateSetBy: {
+        kind: 'CUSTOMER',
+        id: customer.id,
+        code: customer.code,
+        name: customer.name
+      }
+    }
+  }
+  const settings = readSettings(db)
+  return {
+    today: localDateString(now),
+    nextInvoiceNo: formatInvoiceNumber(
+      settings['invoice.prefix'],
+      settings['invoice.padding'],
+      nextInvoiceSequenceValue(db, settings)
+    ),
+    ...floor
+  }
+}
+
 // --- Checks --------------------------------------------------------------------------------------------------------
+
+/** The walk-in customer buys only for cash: exactly the total is received, so its balance stays settled. */
+function assertWalkInPaidInFull(customer: CustomerRow, totals: InvoiceTotals): void {
+  if (!isWalkInCustomer(customer.code) || totals.receivedMinor === totals.totalMinor) return
+  throw new AppFailure({
+    code: 'VALIDATION',
+    message: WALK_IN_FULL_PAYMENT_MESSAGE,
+    fieldErrors: { receivedMinor: [WALK_IN_FULL_PAYMENT_MESSAGE] },
+    details: {
+      rule: WALK_IN_FULL_PAYMENT_RULE,
+      totalMinor: totals.totalMinor,
+      receivedMinor: totals.receivedMinor
+    }
+  })
+}
 
 function invoiceCustomer(db: Db, customerId: number): CustomerRow {
   const customer = customerRow(db, customerId, 'customerId')
@@ -581,6 +649,16 @@ function allocateInvoiceNumber(db: Db, settings: Settings): { seqNo: number; inv
     })
   }
   return { seqNo, invoiceNo }
+}
+
+/** The sequence value the next invoice takes: invoice.startNumber while no invoice number has been used yet. */
+function nextInvoiceSequenceValue(db: Db, settings: Settings): number {
+  const row = db.get<{ next_value: number; used: number }>(
+    `SELECT next_value, EXISTS (SELECT 1 FROM invoices) AS used FROM sequences WHERE name = 'invoice'`
+  )
+  if (row === undefined) throw new Error('The invoice sequence is missing.')
+  const startNumber = settings['invoice.startNumber']
+  return row.next_value === 1 && row.used === 0 && startNumber > 1 ? startNumber : row.next_value
 }
 
 // --- Writes --------------------------------------------------------------------------------------------------------

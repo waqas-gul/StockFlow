@@ -168,7 +168,8 @@ describe('Customers page', () => {
       'Add Customer',
       'Code Customer Shop Phone City Balance Status Actions',
       'C-00002 Ali Raza Ali Traders 0300-1234567 Lahore Rs 3,000.00 Due Active View Edit Deactivate',
-      'C-00001 Cash / Walk-in — — — Settled Active View Edit Deactivate',
+      // The walk-in customer is always active: no Deactivate.
+      'C-00001 Cash / Walk-in — — — Settled Active View Edit C-00003',
       'C-00003 Bilal Ali Traders 0300-1234567 Lahore Rs 750.00 Advance Inactive View Edit Reactivate',
       'Showing 1–3 of 3'
     ]) {
@@ -267,6 +268,12 @@ describe('Customer detail', () => {
     ]) {
       expect(shown).toContain(expected)
     }
+  })
+
+  it('offers no Deactivate for the walk-in customer', () => {
+    const shown = detail({ ...customer, code: 'C-00001', name: 'Cash / Walk-in', shopName: null })
+    expect(shown).toContain('Edit Customer')
+    expect(shown).not.toMatch(/Deactivate|Reactivate/)
   })
 
   it('an inactive customer keeps its history; a new payment needs reactivation, a correction does not', () => {

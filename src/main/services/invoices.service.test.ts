@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Customer, CustomerCreateInput } from '@shared/customers'
 import { calculateInvoiceTotals } from '@shared/invoice-totals'
-import type {
-  InvoiceCreateInput,
-  InvoiceLineInput,
-  InvoiceQuantityInput,
-  InvoiceSaveResult
+import {
+  WALK_IN_FULL_PAYMENT_MESSAGE,
+  type InvoiceCreateInput,
+  type InvoiceLineInput,
+  type InvoiceQuantityInput,
+  type InvoiceSaveResult
 } from '@shared/invoices'
 import type { Product, ProductUnitInput } from '@shared/products'
 import type { Db } from '../db/adapter'
@@ -21,7 +22,7 @@ import {
   updateCustomer
 } from './customers.service'
 import { assertStockInvariants, stockPosition } from './inventory'
-import { createInvoice, getInvoice } from './invoices.service'
+import { createInvoice, getInvoice, invoiceContext } from './invoices.service'
 import { createPayment, getPayment, listPayments } from './payments.service'
 import { createProduct, setProductActive, updateProduct } from './products.service'
 import { updateSettings } from './settings.service'
@@ -1473,6 +1474,121 @@ describe('invoice numbers', () => {
       message: 'The next invoice number, INV-000001, is already used, so the invoice was not saved.'
     })
     expect(state()).toEqual(before)
+  })
+})
+
+// --- Walk-in cash sales ----------------------------------------------------------------------------------------------
+
+describe('walk-in cash sales', () => {
+  function walkInSale(receivedMinor: number): InvoiceSaveResult {
+    return post([line(rice.id, [qty(bag(), 1, 150_000)])], {
+      customerId: walkInId,
+      receivedMinor,
+      paymentMethod: receivedMinor > 0 ? 'CASH' : null
+    })
+  }
+
+  it.each([
+    ['nothing received', 0],
+    ['part of the total received', 100_000],
+    ['more than the total received', 150_001]
+  ])('refuses a walk-in sale with %s: no credit and no advance', (_case, receivedMinor) => {
+    const before = state()
+    expect(failure(() => walkInSale(receivedMinor))).toEqual({
+      code: 'VALIDATION',
+      message: WALK_IN_FULL_PAYMENT_MESSAGE,
+      fieldErrors: { receivedMinor: [WALK_IN_FULL_PAYMENT_MESSAGE] },
+      details: { rule: 'WALK_IN_FULL_PAYMENT', totalMinor: 150_000, receivedMinor }
+    })
+    expect(state()).toEqual(before)
+  })
+
+  it('posts a walk-in sale paid exactly in full, leaving the walk-in balance settled', () => {
+    const invoice = walkInSale(150_000)
+    expect(invoice).toMatchObject({
+      totalMinor: 150_000,
+      receivedMinor: 150_000,
+      balanceAfterMinor: 0
+    })
+    expect(balance(walkInId)).toBe(0)
+  })
+
+  it('takes no money for a zero-total walk-in sale', () => {
+    const free = (receivedMinor: number): InvoiceSaveResult =>
+      post([line(rice.id, [qty(bag(), 1, 0, true)])], {
+        customerId: walkInId,
+        receivedMinor,
+        paymentMethod: receivedMinor > 0 ? 'CASH' : null
+      })
+    expect(failure(() => free(1)).details).toEqual({
+      rule: 'WALK_IN_FULL_PAYMENT',
+      totalMinor: 0,
+      receivedMinor: 1
+    })
+    expect(free(0)).toMatchObject({ totalMinor: 0, receivedMinor: 0, payment: null })
+  })
+
+  it('still lets account customers buy on credit or pay in advance', () => {
+    expect(post([teaLine()], { receivedMinor: 0 }).balanceAfterMinor).toBe(635_000)
+    expect(
+      post([line(rice.id, [qty(bag(), 1, 150_000)])], {
+        receivedMinor: 900_000,
+        paymentMethod: 'CASH'
+      }).balanceAfterMinor
+    ).toBe(-115_000)
+  })
+})
+
+// --- Billing context -------------------------------------------------------------------------------------------------
+
+describe('invoiceContext', () => {
+  it('previews the next invoice number without using it', () => {
+    const preview = (): string =>
+      invoiceContext(db, { customerId: null, productIds: [] }, NOW).nextInvoiceNo
+    expect(preview()).toBe('INV-000001')
+    expect(preview()).toBe('INV-000001')
+    expect(nextSequence('invoice')).toBe(1)
+
+    updateSettings(db, {
+      'invoice.startNumber': 501,
+      'invoice.prefix': 'SF-',
+      'invoice.padding': 4
+    })
+    expect(preview()).toBe('SF-0501')
+    expect(post([teaLine()]).invoiceNo).toBe('SF-0501')
+    expect(preview()).toBe('SF-0502')
+  })
+
+  it('gives today and the earliest allowed date, naming the customer or product that sets it', () => {
+    expect(invoiceContext(db, { customerId: null, productIds: [] }, NOW)).toEqual({
+      today: TODAY,
+      nextInvoiceNo: 'INV-000001',
+      earliestDate: null,
+      earliestDateSetBy: null
+    })
+    receive('2026-09-13', [[tea.id, piece(), 1, 9_000]])
+    expect(invoiceContext(db, { customerId: ali.id, productIds: [sugar.id] }, NOW)).toMatchObject({
+      earliestDate: STOCK_DATE,
+      earliestDateSetBy: { kind: 'CUSTOMER', id: ali.id, code: 'C-00002', name: 'Ali Raza' }
+    })
+    expect(
+      invoiceContext(db, { customerId: ali.id, productIds: [sugar.id, tea.id] }, NOW)
+    ).toMatchObject({
+      earliestDate: '2026-09-13',
+      earliestDateSetBy: { kind: 'PRODUCT', id: tea.id, code: 'P-001', name: 'Tea 950g' }
+    })
+    expect(
+      invoiceContext(db, { customerId: walkInId, productIds: [] }, NOW).earliestDate
+    ).toBeNull()
+  })
+
+  it('refuses a missing customer and invalid input', () => {
+    expect(failure(() => invoiceContext(db, { customerId: 999, productIds: [] }, NOW)).code).toBe(
+      'NOT_FOUND'
+    )
+    expect(failure(() => invoiceContext(db, { customerId: 'x', productIds: [] }, NOW)).code).toBe(
+      'VALIDATION'
+    )
   })
 })
 

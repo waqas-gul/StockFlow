@@ -711,6 +711,217 @@ describe('customers and payments', () => {
   })
 })
 
+describe('invoices', () => {
+  // The fixture clock reads 14 Sep 2026: the main process dates the posting floor by it.
+  const TODAY = '2026-09-14'
+
+  async function seed(): Promise<{
+    productId: number
+    boxId: number
+    pieceId: number
+    customerId: number
+  }> {
+    const product = (await call('products:create', {
+      code: 'P-001',
+      name: 'Tea 950g',
+      companyId: null,
+      packingLabel: '1*12*18',
+      lowStockThresholdBase: 0,
+      currencyMinorDigits: 2,
+      units: [
+        {
+          id: null,
+          name: 'Piece',
+          shortName: null,
+          baseQty: 1,
+          isBase: true,
+          canSell: true,
+          canPurchase: true,
+          wholesalePriceMinor: 10_000,
+          retailPriceMinor: 11_000,
+          defaultCostMinor: null,
+          isActive: true
+        },
+        {
+          id: null,
+          name: 'Box',
+          shortName: null,
+          baseQty: 24,
+          isBase: false,
+          canSell: true,
+          canPurchase: true,
+          wholesalePriceMinor: 230_000,
+          retailPriceMinor: 240_000,
+          defaultCostMinor: null,
+          isActive: true
+        }
+      ]
+    })) as { ok: true; data: { id: number; units: Array<{ id: number; name: string }> } }
+    const unit = (name: string): number => product.data.units.find((item) => item.name === name)!.id
+    await call('stock:receive', {
+      requestId: 'ipc-receipt-0001',
+      receiptDate: '2026-09-12',
+      supplierName: null,
+      reference: null,
+      note: null,
+      currencyMinorDigits: 2,
+      lines: [
+        { productId: product.data.id, unitId: unit('Box'), quantity: 5, unitCostMinor: 200_000 }
+      ]
+    })
+    const customer = (await call('customers:create', {
+      name: 'Ali Raza',
+      shopName: null,
+      phone: null,
+      address: null,
+      city: null,
+      notes: null,
+      opening: null,
+      currencyMinorDigits: 2
+    })) as { ok: true; data: { id: number } }
+    return {
+      productId: product.data.id,
+      boxId: unit('Box'),
+      pieceId: unit('Piece'),
+      customerId: customer.data.id
+    }
+  }
+
+  function invoiceInput(
+    ids: { productId: number; boxId: number; pieceId: number },
+    customerId: number,
+    overrides: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    return {
+      requestId: 'ipc-invoice-0001',
+      invoiceDate: TODAY,
+      customerId,
+      priceTier: 'RETAIL',
+      invoiceCode: null,
+      biltyNo: null,
+      transportName: null,
+      addaName: null,
+      checkedBy: null,
+      notes: null,
+      lines: [
+        {
+          productId: ids.productId,
+          quantities: [
+            { unitId: ids.boxId, quantity: 1, unitPriceMinor: 240_000, priceOverride: false },
+            { unitId: ids.pieceId, quantity: 5, unitPriceMinor: 11_000, priceOverride: false }
+          ],
+          freeQuantities: [],
+          discount: null,
+          schemeMinor: 0,
+          ctnCount: null
+        }
+      ],
+      extraDiscountMinor: 0,
+      freightMinor: 0,
+      receivedMinor: 100_000,
+      paymentMethod: 'CASH',
+      paymentReference: null,
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  it('previews the context and posts an invoice through IPC; a retry returns the saved invoice', async () => {
+    const ids = await seed()
+    await expect(
+      call('invoices:context', { customerId: ids.customerId, productIds: [ids.productId] })
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        today: TODAY,
+        nextInvoiceNo: 'INV-000001',
+        earliestDate: '2026-09-12',
+        earliestDateSetBy: { kind: 'PRODUCT', id: ids.productId, code: 'P-001', name: 'Tea 950g' }
+      }
+    })
+
+    const posted = await call('invoices:post', invoiceInput(ids, ids.customerId))
+    expect(posted).toMatchObject({
+      ok: true,
+      data: {
+        invoiceNo: 'INV-000001',
+        totalMinor: 295_000,
+        payment: { paymentNo: 'RCP-000001', amountMinor: 100_000 },
+        balanceAfterMinor: 195_000,
+        replayed: false
+      }
+    })
+    await expect(call('invoices:post', invoiceInput(ids, ids.customerId))).resolves.toMatchObject({
+      ok: true,
+      data: { invoiceNo: 'INV-000001', replayed: true }
+    })
+    await expect(call('stock:summary', ids.productId)).resolves.toMatchObject({
+      ok: true,
+      data: { qtyBase: 120 - 29 }
+    })
+    await expect(
+      call('invoices:context', { customerId: null, productIds: [] })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { nextInvoiceNo: 'INV-000002', earliestDate: null }
+    })
+  })
+
+  it('returns invoice refusals as clean AppErrors: walk-in credit, stale price, stock and date', async () => {
+    const ids = await seed()
+    const walkIn = await call(
+      'invoices:post',
+      invoiceInput(ids, 1, { requestId: 'ipc-invoice-0002' })
+    )
+    expect(walkIn).toMatchObject({
+      ok: false,
+      error: {
+        code: 'VALIDATION',
+        message: 'Walk-in sales must be paid in full. Select a customer account for credit sales.',
+        details: { rule: 'WALK_IN_FULL_PAYMENT', totalMinor: 295_000, receivedMinor: 100_000 }
+      }
+    })
+    const stale = await call(
+      'invoices:post',
+      invoiceInput(ids, ids.customerId, { requestId: 'ipc-invoice-0003', priceTier: 'WHOLESALE' })
+    )
+    expect(stale).toMatchObject({ ok: false, error: { code: 'PRICE_CHANGED' } })
+    const tooMuch = invoiceInput(ids, ids.customerId, { requestId: 'ipc-invoice-0004' })
+    ;(
+      tooMuch.lines as Array<{ quantities: Array<{ quantity: number }> }>
+    )[0].quantities[0].quantity = 6
+    const stock = await call('invoices:post', tooMuch)
+    expect(stock).toMatchObject({ ok: false, error: { code: 'INSUFFICIENT_STOCK' } })
+    const early = await call(
+      'invoices:post',
+      invoiceInput(ids, ids.customerId, {
+        requestId: 'ipc-invoice-0005',
+        invoiceDate: '2026-09-11'
+      })
+    )
+    expect(early).toMatchObject({ ok: false, error: { code: 'DATE_NOT_ALLOWED' } })
+    expect(JSON.stringify([walkIn, stale, stock, early])).not.toMatch(/SQLITE|constraint/i)
+    await expect(
+      call('invoices:context', { customerId: null, productIds: [] })
+    ).resolves.toMatchObject({ ok: true, data: { nextInvoiceNo: 'INV-000001' } })
+  })
+
+  it.each<[string, string, unknown]>([
+    ['an incomplete invoice', 'invoices:post', { requestId: 'ipc-invoice-0009' }],
+    ['a context without product ids', 'invoices:context', { customerId: null }],
+    [
+      'a context with a customer id as text',
+      'invoices:context',
+      { customerId: '1', productIds: [] }
+    ]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})
+
 describe('backup and restore: the renderer never supplies a path', () => {
   it.each([
     'backup:status',

@@ -10,6 +10,7 @@ import {
   CustomerSearchInputSchema,
   CustomerUpdateSchema
 } from '@shared/customers'
+import { InvoiceContextInputSchema, InvoiceCreateSchema } from '@shared/invoices'
 import {
   PaymentCreateSchema,
   PaymentDuplicateCheckSchema,
@@ -56,6 +57,7 @@ import {
   setCustomerActive,
   updateCustomer
 } from '../services/customers.service'
+import { createInvoice, invoiceContext } from '../services/invoices.service'
 import type { LiveDatabase } from '../services/live-database'
 import { integrityCheckReport } from '../services/maintenance.service'
 import {
@@ -233,6 +235,16 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       void: {
         input: PaymentVoidInputSchema,
         run: (input) => voidPayment(database.get(), input, ctx.now())
+      }
+    },
+    invoices: {
+      context: {
+        input: InvoiceContextInputSchema,
+        run: (input) => invoiceContext(database.get(), input, ctx.now())
+      },
+      post: {
+        input: InvoiceCreateSchema,
+        run: (input) => createInvoice(database.get(), input, ctx.now())
       }
     }
   }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
 import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
+import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
@@ -39,6 +40,7 @@ describe('navigation and routes', () => {
   })
 
   const implemented = [
+    '/invoices/new',
     '/settings',
     '/products',
     '/stock/in',
@@ -71,6 +73,11 @@ describe('navigation and routes', () => {
     expect(leafComponent('/customers')).toBe(CustomersPage)
     expect(leafComponent('/customers/12')).toBe(CustomerDetailPage)
     expect(leafComponent('/payments')).toBe(PaymentsPage)
+  })
+
+  it('routes /invoices/new to the Phase 8B billing page; invoice history stays a placeholder', () => {
+    expect(leafComponent('/invoices/new')).toBe(NewInvoicePage)
+    expect(leafComponent('/invoices')).toBe(PlaceholderPage)
   })
 
   it('titles a customer page with its section', () => {

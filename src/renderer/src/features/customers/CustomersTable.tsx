@@ -1,5 +1,5 @@
 import { Eye, Pencil, Power, PowerOff } from 'lucide-react'
-import type { CustomerListItem } from '@shared/customers'
+import { isWalkInCustomer, type CustomerListItem } from '@shared/customers'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -89,15 +89,18 @@ export function CustomersTable({
                   <Pencil aria-hidden />
                   Edit
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busyId === item.id}
-                  onClick={() => onToggleActive(item)}
-                >
-                  {item.isActive ? <PowerOff aria-hidden /> : <Power aria-hidden />}
-                  {item.isActive ? 'Deactivate' : 'Reactivate'}
-                </Button>
+                {/* The walk-in customer is always active; an old inactive one can still be reactivated. */}
+                {!(isWalkInCustomer(item.code) && item.isActive) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busyId === item.id}
+                    onClick={() => onToggleActive(item)}
+                  >
+                    {item.isActive ? <PowerOff aria-hidden /> : <Power aria-hidden />}
+                    {item.isActive ? 'Deactivate' : 'Reactivate'}
+                  </Button>
+                )}
               </div>
             </TableCell>
           </TableRow>

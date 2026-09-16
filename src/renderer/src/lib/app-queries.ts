@@ -13,6 +13,7 @@ import type {
   CustomerSearchInput,
   ListPage
 } from '@shared/customers'
+import type { InvoiceContext, InvoiceContextInput } from '@shared/invoices'
 import type { PaymentDetail, PaymentListInput, PaymentSummary } from '@shared/payments'
 import type {
   Product,
@@ -286,6 +287,33 @@ export function paymentQuery(
     queryFn: () => unwrap(window.api.payments.get(id)),
     staleTime: 0
   })
+}
+
+/** `window.api.invoices.context(...)`: today, the next invoice number (a preview) and the posting-date floor. */
+export function invoiceContextQuery(
+  input: InvoiceContextInput
+): UseQueryOptions<
+  InvoiceContext,
+  Error,
+  InvoiceContext,
+  ReturnType<typeof queryKeys.invoices.context>
+> {
+  return queryOptions({
+    queryKey: queryKeys.invoices.context(input),
+    queryFn: () => unwrap(window.api.invoices.context(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/**
+ * After an invoice is posted: stock and products (quantities), customers and payments (balances, the counter payment),
+ * invoices (the next number) and settings (the currency decimal places lock) are read again.
+ */
+export function refreshAfterInvoice(queryClient: QueryClient): void {
+  refreshAfterStockChange(queryClient)
+  refreshAfterCustomerChange(queryClient)
+  void queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
 }
 
 /**
