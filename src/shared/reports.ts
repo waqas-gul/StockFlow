@@ -12,17 +12,16 @@ import { DateSchema, wholeNumber } from './validation'
  *   discounts and schemes, before freight), freight charged is freight income, and COGS is the cost frozen on the
  *   invoice when it was posted. VOID invoices contribute nothing. Money received is not revenue.
  * - Stock gains and losses are the signed values of the adjustments' own stock movements, by adjustment_date.
+ * - Receipt cost corrections are disclosed, never counted: they change the inventory value, which reaches profit through
+ *   the COGS of later sales.
  * - Expenses are ACTIVE expenses by expense_date, by their category's group (locked once a category is used).
  * - Current-state reports (stock, customer balances) read the stock movement and customer ledgers.
  * All money is whole minor units.
  */
 
-/**
- * The seeded "Purchase Cost Correction" expense category. Migration 0001 inserts the four seeded categories, in this
- * order, into the new empty table, so their ids are always 1–4; migration 0001 is frozen, categories are never deleted,
- * and ids never change. Its NAME may be renamed, so reports identify it only by this id.
- */
-export const PURCHASE_COST_CORRECTION_CATEGORY_ID = 4
+/** Shown with the receipt cost corrections of the period, which are not part of the P&L arithmetic. */
+export const RECEIPT_COST_CORRECTION_NOTE =
+  'Receipt cost corrections update inventory value and affect future COGS. Historical COGS is not recalculated.'
 
 /** Limitation L1: shown on the P&L when the period has purchase-cost corrections. */
 export const FROZEN_COGS_NOTE =
@@ -87,7 +86,7 @@ export interface AdjustmentValueTotal {
   readonly netValueMinor: number
 }
 
-/** One inventory data correction (receipt quantity / cost correction, other correction) in the period. */
+/** One inventory correction (receipt quantity / cost correction, other correction) in the period. */
 export interface InventoryCorrectionDetail {
   readonly adjustmentId: number
   readonly adjustmentNo: string
@@ -146,13 +145,19 @@ export interface ProfitLossReport {
   readonly netOperatingProfitMinor: number
   /** ACTIVE expenses in the Purchase Cost Correction category (positive; reduces profit after corrections). */
   readonly purchaseCostCorrectionsMinor: number
-  /** RECEIPT_QTY_CORRECTION, RECEIPT_COST_CORRECTION and OTHER_CORRECTION, by reason. */
+  /** RECEIPT_QTY_CORRECTION and OTHER_CORRECTION, by reason. */
   readonly inventoryCorrections: readonly AdjustmentValueTotal[]
   /** Σ signed movement values of the inventory data corrections. */
   readonly inventoryCorrectionsNetMinor: number
   readonly inventoryCorrectionDetails: readonly InventoryCorrectionDetail[]
   /** Net operating profit − purchase cost corrections + inventory corrections net value. */
   readonly profitAfterDataCorrectionsMinor: number
+  /**
+   * RECEIPT_COST_CORRECTION movement values in the period: disclosed only (RECEIPT_COST_CORRECTION_NOTE). They are in no
+   * profit figure above; they reach profit through the COGS of later sales.
+   */
+  readonly receiptCostCorrections: AdjustmentValueTotal
+  readonly receiptCostCorrectionDetails: readonly InventoryCorrectionDetail[]
   /** Expense categories with ACTIVE expenses in the period (the drill-down), largest first. */
   readonly expenseCategories: readonly ExpenseCategoryTotal[]
   /** Not profit: opening stock value added in the period (for information). */

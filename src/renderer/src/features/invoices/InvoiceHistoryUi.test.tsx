@@ -25,7 +25,8 @@ const settings: SettingsView = {
     'invoice.startNumber': 1,
     'invoice.paperSize': 'A4'
   },
-  minorDigitsLocked: true
+  currencyLocked: true,
+  startNumberLocked: false
 }
 
 function summary(overrides: Partial<InvoiceSummary>): InvoiceSummary {
@@ -116,7 +117,9 @@ describe('Invoice History', () => {
     ]) {
       expect(shown).toContain(expected)
     }
-    expect(html).toContain('placeholder="Search by invoice no, customer, code or shop"')
+    expect(html).toContain(
+      'placeholder="Search by invoice no, invoice code, customer, customer code or shop"'
+    )
     expect(html).toContain('aria-label="Status"')
     expect(html).toContain('href="/invoices/3"')
     expect(html).toContain('href="/invoices/new"')

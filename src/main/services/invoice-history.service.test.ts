@@ -324,6 +324,25 @@ describe('listInvoices', () => {
     expect(numbers({ search: '_' })).toEqual([])
   })
 
+  it('finds invoices by Invoice Code, in any letter case and in part; number and customer search still work', () => {
+    seedHistory()
+    post('2026-09-14', ali.id, { invoiceCode: 'BK-2026/17' })
+    post('2026-09-14', bilal.id, { invoiceCode: 'Cash-Sale-9' })
+    // Exact, other letter case, and part of the code.
+    expect(numbers({ search: 'BK-2026/17' })).toEqual(['INV-000006'])
+    expect(numbers({ search: 'bk-2026/17' })).toEqual(['INV-000006'])
+    expect(numbers({ search: '2026/17' })).toEqual(['INV-000006'])
+    expect(numbers({ search: 'cash-sale' })).toEqual(['INV-000007'])
+    // Combined with the customer; an unrelated code matches nothing.
+    expect(numbers({ search: 'Ali BK-2026' })).toEqual(['INV-000006'])
+    expect(numbers({ search: 'Bilal BK-2026' })).toEqual([])
+    expect(numbers({ search: 'ZZ-404' })).toEqual([])
+    // Invoice number, customer and shop search are unchanged.
+    expect(numbers({ search: 'INV-000007' })).toEqual(['INV-000007'])
+    expect(numbers({ search: 'Ali Traders' })).toEqual(['INV-000006', 'INV-000003', 'INV-000001'])
+    expect(numbers({ search: 'store' })).toEqual(['INV-000007', 'INV-000005', 'INV-000002'])
+  })
+
   it('searches and shows the names saved on the invoice, not the current profile', () => {
     const [invoice] = seedHistory()
     updateCustomer(db, {

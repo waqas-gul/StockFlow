@@ -1461,10 +1461,22 @@ describe('invoice numbers', () => {
     expect(nextSequence('invoice')).toBe(1)
 
     expect(post([teaLine()]).invoiceNo).toBe('INV-000501')
-    updateSettings(db, { 'invoice.startNumber': 900 })
+    // Numbering has begun: the starting number is locked, and saving it unchanged is still accepted.
+    expect(failure(() => updateSettings(db, { 'invoice.startNumber': 900 }))).toMatchObject({
+      code: 'SETTING_LOCKED',
+      message: 'Starting number cannot be changed after invoice numbering has begun.'
+    })
+    expect(updateSettings(db, { 'invoice.startNumber': 501 })['invoice.startNumber']).toBe(501)
     expect(post([line(sugar.id, [qty(kg(), 1, 20_000)])]).invoiceNo).toBe('INV-000502')
-    updateSettings(db, { 'invoice.startNumber': 1 })
+    expect(failure(() => updateSettings(db, { 'invoice.startNumber': 1 }))).toMatchObject({
+      code: 'SETTING_LOCKED'
+    })
     expect(post([line(rice.id, [qty(bag(), 1, 150_000)])]).invoiceNo).toBe('INV-000503')
+    expect(
+      db
+        .all<{ invoice_no: string }>('SELECT invoice_no FROM invoices ORDER BY seq_no')
+        .map((row) => row.invoice_no)
+    ).toEqual(['INV-000501', 'INV-000502', 'INV-000503'])
   })
 
   it('refuses to reuse a number that is already taken, saving nothing', () => {

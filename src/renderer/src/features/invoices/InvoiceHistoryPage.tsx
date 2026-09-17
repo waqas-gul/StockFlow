@@ -101,7 +101,7 @@ export function InvoiceHistoryPage(): React.JSX.Element {
             <Input
               type="search"
               aria-label="Search invoices"
-              placeholder="Search by invoice no, customer, code or shop"
+              placeholder="Search by invoice no, invoice code, customer, customer code or shop"
               className="pl-8"
               maxLength={100}
               value={search}

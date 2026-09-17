@@ -17,7 +17,7 @@ type CheckWording = { readonly title: string } & Readonly<Record<CheckStatus, st
 
 const NEEDS_ATTENTION = 'This check needs attention.'
 
-/** Plain-language wording for each Phase 4A check. No SQL, pragma, table or checksum ever reaches the screen. */
+/** Plain-language wording for each check. No SQL, pragma, table or checksum ever reaches the screen. */
 const WORDING: Readonly<Record<IntegrityCheckId, CheckWording>> = {
   'sqlite.integrity': {
     title: 'Database file',
@@ -66,6 +66,54 @@ const WORDING: Readonly<Record<IntegrityCheckId, CheckWording>> = {
     OK: 'Every customer balance matches the ledger.',
     WARNING: NEEDS_ATTENTION,
     ERROR: 'Some customer balances do not match the ledger.'
+  },
+  'invoices.totals': {
+    title: 'Invoice lines and totals',
+    OK: 'Every invoice line and total adds up.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some invoice lines or totals do not add up.'
+  },
+  'invoices.stock': {
+    title: 'Invoice stock',
+    OK: 'Every invoice took, and every void returned, exactly its own stock.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'The stock records of some invoices do not match the invoices.'
+  },
+  'invoices.accounts': {
+    title: 'Invoice customer accounts',
+    OK: 'Every invoice has the expected customer account entries and payment.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some invoices do not have the expected customer account entries or payment.'
+  },
+  'payments.ledger': {
+    title: 'Payments',
+    OK: 'Every payment, and every payment void, is on the customer account as expected.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some payments are missing from the customer account, or differ from it.'
+  },
+  'customers.walk-in': {
+    title: 'Walk-in customer',
+    OK: 'The walk-in customer account is at zero.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'The walk-in customer account is not at zero.'
+  },
+  'receipts.stock': {
+    title: 'Stock receipts',
+    OK: 'Every stock receipt line added, and every void removed, exactly its own stock.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'The stock records of some stock receipts do not match the receipts.'
+  },
+  'adjustments.stock': {
+    title: 'Stock adjustments',
+    OK: 'Every stock adjustment has exactly its own stock movement.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'The stock records of some stock adjustments do not match the adjustments.'
+  },
+  'dates.future': {
+    title: 'Business dates',
+    OK: 'No record is dated after today.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some records are dated after today.'
   }
 }
 

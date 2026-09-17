@@ -70,6 +70,24 @@ export interface ExpenseCategory {
   readonly expenseCount: number
 }
 
+/**
+ * The seeded "Purchase Cost Correction" expense category, which has accounting meaning: Reports show its expenses below
+ * Net Operating Profit. Migration 0001 inserts the four seeded categories, in this order, into the new empty table, so
+ * their ids are always 1–4; migration 0001 is frozen, categories are never deleted, and ids never change. Reports
+ * identify the category only by this id, never by its name, so its name and group are locked (only its active state may
+ * change).
+ */
+export const PURCHASE_COST_CORRECTION_CATEGORY_ID = 4
+export const PURCHASE_COST_CORRECTION_CATEGORY_NAME = 'Purchase Cost Correction'
+
+/** True for a category whose name and group never change (the Purchase Cost Correction category). */
+export function isProtectedExpenseCategory(id: number): boolean {
+  return id === PURCHASE_COST_CORRECTION_CATEGORY_ID
+}
+
+export const PROTECTED_EXPENSE_CATEGORY_MESSAGE =
+  'The Purchase Cost Correction category is used by Reports, so its name and group cannot be changed.'
+
 export const DUPLICATE_EXPENSE_CATEGORY_MESSAGE = 'Another expense category already uses this name.'
 export const INACTIVE_EXPENSE_CATEGORY_MESSAGE = 'This expense category is inactive.'
 export const VOID_EXPENSE_MESSAGE = 'Expense is already void.'

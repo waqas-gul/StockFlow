@@ -3,6 +3,9 @@ import {
   EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE,
   ExpenseCategoryCreateSchema,
   ExpenseCategoryUpdateSchema,
+  PROTECTED_EXPENSE_CATEGORY_MESSAGE,
+  PURCHASE_COST_CORRECTION_CATEGORY_NAME,
+  isProtectedExpenseCategory,
   type ExpenseCategory,
   type ExpenseGroup
 } from '@shared/expenses'
@@ -12,10 +15,12 @@ import { AppFailure, parseInput } from '../errors'
 
 /*
  * Expense categories over the `expense_categories` table (the four seeded ones included). A category is never deleted:
- * deactivating it only stops it being chosen for another expense. Its name may always change. Its group (SHOP / GENERAL)
+ * deactivating it only stops it being chosen for another expense. Its name may change. Its group (SHOP / GENERAL)
  * may change only until an expense (active or void) first uses it: expenses keep no copy of their category's group, so
  * locking it keeps every past expense in the group it was recorded in (Phase 11 reports rely on this). Names are unique
  * regardless of letter case (the table's NOCASE index covers English letters; the service also compares in lower case).
+ * The Purchase Cost Correction category (by id) is protected: Reports give it accounting meaning, so its name and group
+ * never change (a name that was changed before this rule may only be set back); it may still be deactivated.
  */
 
 interface CategoryRow {
@@ -55,6 +60,13 @@ export function updateExpenseCategory(db: Db, input: unknown): ExpenseCategory {
   const { id, name, group } = parseInput(ExpenseCategoryUpdateSchema, input)
   return db.transaction(() => {
     const current = readExpenseCategory(db, id)
+    if (
+      isProtectedExpenseCategory(id) &&
+      (group !== current.group ||
+        (name !== current.name && name !== PURCHASE_COST_CORRECTION_CATEGORY_NAME))
+    ) {
+      throw new AppFailure({ code: 'FORBIDDEN_STATE', message: PROTECTED_EXPENSE_CATEGORY_MESSAGE })
+    }
     if (group !== current.group && current.expenseCount > 0) {
       throw new AppFailure({
         code: 'FORBIDDEN_STATE',

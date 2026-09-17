@@ -35,7 +35,15 @@ const CHECK_IDS: IntegrityCheckId[] = [
   'schema.history',
   'inventory.stock',
   'ledger.entries',
-  'ledger.balances'
+  'ledger.balances',
+  'invoices.totals',
+  'invoices.stock',
+  'invoices.accounts',
+  'payments.ledger',
+  'customers.walk-in',
+  'receipts.stock',
+  'adjustments.stock',
+  'dates.future'
 ]
 
 let temp: TempDir
@@ -82,15 +90,27 @@ describe('runIntegrityCheck: a healthy database', () => {
     const m = insertMasters(db)
     const d = insertDocuments(db, m)
     insertRow(db, 'stock_movements', rows.movement(m, { receipt_item_id: d.receiptItemId }))
+    // The sale takes the line's quantity at its frozen cost (200,000); the damage adjustment has its own movement.
     insertRow(
       db,
       'stock_movements',
       rows.movement(m, {
         type: 'SALE',
         qty_base: -27,
-        value_minor: -270000,
+        value_minor: -200000,
         invoice_item_id: d.invoiceItemId,
         movement_date: '2026-09-10'
+      })
+    )
+    insertRow(
+      db,
+      'stock_movements',
+      rows.movement(m, {
+        type: 'ADJUST_OUT',
+        qty_base: -3,
+        value_minor: -27000,
+        adjustment_id: d.adjustmentId,
+        movement_date: '2026-09-02'
       })
     )
     insertRow(
@@ -220,9 +240,18 @@ describe('runIntegrityCheck: schema', () => {
       'schema.history': 'OK',
       'inventory.stock': 'OK',
       'ledger.entries': 'OK',
-      'ledger.balances': 'OK'
+      'ledger.balances': 'OK',
+      'invoices.totals': 'OK',
+      'invoices.stock': 'OK',
+      'invoices.accounts': 'OK',
+      'payments.ledger': 'OK',
+      'customers.walk-in': 'OK',
+      'receipts.stock': 'OK',
+      'adjustments.stock': 'OK',
+      'dates.future': 'OK'
     })
     expect(check(result, 'inventory.stock').summary).toMatch(/not applicable/i)
+    expect(check(result, 'dates.future').summary).toMatch(/not applicable/i)
   })
 
   it('detects a schema version whose history table and tables are missing', () => {

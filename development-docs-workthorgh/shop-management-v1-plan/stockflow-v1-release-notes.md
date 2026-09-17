@@ -8,6 +8,13 @@
   - A Start Menu entry and a desktop shortcut are created.
 - The installer is not digitally signed yet. If Windows SmartScreen says "Windows protected your PC", click **More info** and then **Run anyway**.
 
+## Before you enter any prices or invoices
+
+Check these in Settings first, because they lock:
+
+- **Currency code, symbol and decimal places** lock once any price, stock, invoice, payment, expense or customer balance has been entered. Old invoices always reprint in the same currency.
+- **Invoice starting number** locks once the first invoice has been created. Later invoices simply continue the numbering.
+
 ## Where your data is kept
 
 - Everything you enter is stored in `%APPDATA%\StockFlow\data\shop.db` (for example `C:\Users\<you>\AppData\Roaming\StockFlow\data\shop.db`).
@@ -57,6 +64,8 @@ If StockFlow cannot open its database at all, it offers **Restore Backup** by it
 - **No sales returns.** Undo a mistaken invoice by voiding it.
 - **No closed accounting periods.** Back-dated documents are allowed, down to each product's and customer's latest activity.
 - **Historical COGS is frozen when an invoice is posted.** A later purchase-cost correction changes future inventory cost and future COGS, not old invoices.
+- **Receipt cost corrections are not profit or loss by themselves.** They change the stock value, and that reaches profit through the cost of goods sold later. Profit & Loss lists them separately, for information only.
+- **The Purchase Cost Correction expense category is fixed.** Reports use it, so its name and group cannot be changed; it can still be deactivated.
 - **Stock and Customer Balance reports show current figures only**, with no "as of date".
 - **Reports cannot be exported** to Excel or PDF. Invoices can be saved as PDF.
 - **One computer, one user:** no network database, logins or user accounts.

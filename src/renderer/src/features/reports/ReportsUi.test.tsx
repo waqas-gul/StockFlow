@@ -30,7 +30,8 @@ const settings: SettingsView = {
     'invoice.startNumber': 1,
     'invoice.paperSize': 'A4'
   },
-  minorDigitsLocked: true
+  currencyLocked: true,
+  startNumberLocked: false
 }
 
 function render(tab: ReportTab, seed: (client: QueryClient) => void): string {
@@ -111,7 +112,7 @@ describe('Reports page', () => {
       netOperatingProfitMinor: 300_000,
       purchaseCostCorrectionsMinor: 25_000,
       inventoryCorrections: basePl.inventoryCorrections.map((total) =>
-        total.reason === 'RECEIPT_COST_CORRECTION'
+        total.reason === 'OTHER_CORRECTION'
           ? { ...total, count: 1, valueAddedMinor: 20_000, netValueMinor: 20_000 }
           : total
       ),
@@ -121,12 +122,12 @@ describe('Reports page', () => {
           adjustmentId: 7,
           adjustmentNo: 'ADJ-000007',
           adjustmentDate: '2026-09-05',
-          reason: 'RECEIPT_COST_CORRECTION',
-          direction: 'VALUE',
+          reason: 'OTHER_CORRECTION',
+          direction: 'IN',
           productCode: 'W-001',
           productName: 'Widget',
-          qtyBase: 0,
-          quantityText: null,
+          qtyBase: 2,
+          quantityText: '+2 Piece',
           valueMinor: 20_000
         }
       ],
@@ -150,19 +151,66 @@ describe('Reports page', () => {
       )
     )
     expect(shown).toContain(
-      'Data Corrections Purchase Cost Corrections − Rs 250.00 Inventory Quantity / Value Corrections Rs 200.00 Profit After Data Corrections'
+      'Data Corrections Purchase Cost Corrections − Rs 250.00 Inventory Quantity Corrections Rs 200.00 Profit After Data Corrections'
     )
     expect(shown).toContain('Rs 2,950.00')
     expect(shown).toContain(
       'Supplier Price Fixes Data correction (below operating profit) Rs 250.00'
     )
     expect(shown).toContain(
-      '05-Sep-2026 ADJ-000007 Receipt Cost Correction W-001 · Widget Value only +Rs 200.00'
+      '05-Sep-2026 ADJ-000007 Other Correction W-001 · Widget +2 Piece +Rs 200.00'
     )
     expect(shown).toContain('Net value effect +Rs 200.00')
+    expect(shown).not.toContain('Receipt Cost Correction')
     expect(shown).toContain(
       'Historical COGS is frozen when an invoice is posted. Later purchase-cost corrections affect future inventory valuation and future COGS only.'
     )
+  })
+
+  it('discloses receipt cost corrections apart from the statement, never in its arithmetic', () => {
+    const detail = {
+      adjustmentId: 8,
+      adjustmentNo: 'ADJ-000008',
+      adjustmentDate: '2026-09-06',
+      reason: 'RECEIPT_COST_CORRECTION' as const,
+      direction: 'VALUE' as const,
+      productCode: 'W-001',
+      productName: 'Widget',
+      qtyBase: 0,
+      quantityText: null
+    }
+    const report: ProfitLossReport = {
+      ...basePl,
+      receiptCostCorrections: {
+        reason: 'RECEIPT_COST_CORRECTION',
+        count: 2,
+        valueAddedMinor: 15_000,
+        valueRemovedMinor: 5_000,
+        netValueMinor: 10_000
+      },
+      receiptCostCorrectionDetails: [
+        { ...detail, valueMinor: 15_000 },
+        { ...detail, adjustmentId: 9, adjustmentNo: 'ADJ-000009', valueMinor: -5_000 }
+      ],
+      showFrozenCogsNote: true
+    }
+    const shown = text(
+      render('profit-loss', (client) =>
+        client.setQueryData(queryKeys.reports.profitLoss(SEPTEMBER), report)
+      )
+    )
+    const statement = shown.slice(
+      shown.indexOf('Profit & Loss 1 posted'),
+      shown.indexOf('Expenses by Category')
+    )
+    expect(statement).toContain('Net Operating Profit')
+    expect(statement).not.toMatch(/Receipt Cost|Data Corrections/)
+    expect(shown).toContain(
+      'Receipt Cost Corrections For information only: not included in any profit figure above. Net change in inventory value +Rs 100.00 Receipt cost corrections update inventory value and affect future COGS. Historical COGS is not recalculated.'
+    )
+    expect(shown).toContain('06-Sep-2026 ADJ-000008 W-001 · Widget +Rs 150.00')
+    expect(shown).toContain('06-Sep-2026 ADJ-000009 W-001 · Widget −Rs 50.00')
+    expect(shown).toContain('Net Operating Profit Rs 3,000.00')
   })
 
   it('shows the sales summary and the invoices of the period', () => {

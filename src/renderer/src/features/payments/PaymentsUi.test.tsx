@@ -28,7 +28,8 @@ const settings: SettingsView = {
     'invoice.startNumber': 1,
     'invoice.paperSize': 'A4'
   },
-  minorDigitsLocked: true
+  currencyLocked: true,
+  startNumberLocked: false
 }
 
 const customer: Customer = {

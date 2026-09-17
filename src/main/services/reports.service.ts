@@ -8,10 +8,9 @@ import {
   subtractMinor,
   sumMinor
 } from '@shared/domain'
-import type { ExpenseGroup } from '@shared/expenses'
+import { PURCHASE_COST_CORRECTION_CATEGORY_ID, type ExpenseGroup } from '@shared/expenses'
 import {
   ExpenseReportInputSchema,
-  PURCHASE_COST_CORRECTION_CATEGORY_ID,
   ReportPeriodSchema,
   SalesReportInputSchema,
   type AdjustmentValueTotal,
@@ -44,8 +43,11 @@ import { listExpenses } from './expenses.service'
  *   − Stock Losses (value removed by DAMAGE, EXPIRY, SHORTAGE movements)
  *   = Net Operating Profit
  *   − Purchase Cost Corrections (ACTIVE expenses in that category, by id)
- *   + Inventory data corrections (signed movement values of receipt quantity/cost and other corrections)
+ *   + Inventory data corrections (signed movement values of receipt quantity and other corrections)
  *   = Profit After Data Corrections
+ * Receipt cost corrections are disclosed with their value but are in none of these figures: they change the inventory
+ * value, which reaches profit through the COGS of later sales (historical COGS stays frozen), so counting them in the
+ * period as well would count them twice.
  * VOID invoices and VOID expenses contribute nothing; payments are never revenue; OPENING_STOCK, receipts and their
  * voids are not P&L; sales and their voids are represented by revenue and frozen COGS.
  *
@@ -230,6 +232,9 @@ export function quantityFormatter(db: Db): (productId: number, qtyBase: number) 
 const INVENTORY_CORRECTION_REASONS = ADJUSTMENT_REASONS.filter(
   (reason) => ADJUSTMENT_REASON_INFO[reason].pnl === 'INVENTORY_DATA_CORRECTION'
 )
+const DISCLOSED_REASONS = ADJUSTMENT_REASONS.filter(
+  (reason) => ADJUSTMENT_REASON_INFO[reason].pnl === 'DISCLOSURE_ONLY'
+)
 
 // --- Profit & Loss ------------------------------------------------------------------------------------------------------
 
@@ -287,8 +292,10 @@ export function profitLossReport(db: Db, input: unknown): ProfitLossReport {
       purchaseCostCorrectionsMinor: expenses.purchaseCostCorrectionsMinor,
       inventoryCorrections,
       inventoryCorrectionsNetMinor,
-      inventoryCorrectionDetails: inventoryCorrectionDetails(db, period),
+      inventoryCorrectionDetails: correctionDetails(db, period, INVENTORY_CORRECTION_REASONS),
       profitAfterDataCorrectionsMinor,
+      receiptCostCorrections: adjustments.get('RECEIPT_COST_CORRECTION')!,
+      receiptCostCorrectionDetails: correctionDetails(db, period, DISCLOSED_REASONS),
       expenseCategories: categories,
       openingStockValueMinor: adjustments.get('OPENING_STOCK')!.netValueMinor,
       showFrozenCogsNote:
@@ -298,7 +305,12 @@ export function profitLossReport(db: Db, input: unknown): ProfitLossReport {
   })
 }
 
-function inventoryCorrectionDetails(db: Db, period: ReportPeriod): InventoryCorrectionDetail[] {
+/** The adjustments of the given reasons in the period, by date. */
+function correctionDetails(
+  db: Db,
+  period: ReportPeriod,
+  reasons: readonly AdjustmentReason[]
+): InventoryCorrectionDetail[] {
   const quantityText = quantityFormatter(db)
   return db
     .all<{
@@ -319,9 +331,9 @@ function inventoryCorrectionDetails(db: Db, period: ReportPeriod): InventoryCorr
        JOIN stock_movements AS m ON m.adjustment_id = a.id
        JOIN products AS p ON p.id = a.product_id
        WHERE a.adjustment_date BETWEEN ? AND ?
-         AND a.reason_code IN (${INVENTORY_CORRECTION_REASONS.map(() => '?').join(', ')})
+         AND a.reason_code IN (${reasons.map(() => '?').join(', ')})
        ORDER BY a.adjustment_date, a.id`,
-      [period.dateFrom, period.dateTo, ...INVENTORY_CORRECTION_REASONS]
+      [period.dateFrom, period.dateTo, ...reasons]
     )
     .map((row) => ({
       adjustmentId: row.id,

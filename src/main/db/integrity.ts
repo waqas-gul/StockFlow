@@ -1,12 +1,25 @@
 import type { Db } from './adapter'
+import { localDateString } from '@shared/dates'
 import { STOCKFLOW_APPLICATION_ID, readApplicationId, readUserVersion } from './connection'
+import {
+  adjustmentStockFindings,
+  futureDateFindings,
+  invoiceAccountFindings,
+  invoiceStockFindings,
+  invoiceTotalsFindings,
+  paymentLedgerFindings,
+  receiptStockFindings,
+  walkInFindings,
+  type DocumentFindings
+} from './integrity-documents'
 import type { Migration } from './migrate'
 import { foreignKeyViolations, integrityProblems } from './verify'
 
 /*
  * The integrity check engine (plan §7.5): database-level checks plus the invariants that can be checked against
- * the V1 schema today. It only reads and reports; it never fixes anything. Later phases add document-level checks
- * (invoice totals, one SALE movement per line, …) when the services that write those documents exist.
+ * the V1 schema, and the document-level checks of integrity-documents.ts (invoice lines and totals, the stock movements
+ * and customer account entries of every invoice, payment, receipt and adjustment, the walk-in account, and business
+ * dates after today). It only reads and reports; it never fixes anything.
  */
 
 export type CheckStatus = 'OK' | 'WARNING' | 'ERROR'
@@ -20,6 +33,14 @@ export type IntegrityCheckId =
   | 'inventory.stock'
   | 'ledger.entries'
   | 'ledger.balances'
+  | 'invoices.totals'
+  | 'invoices.stock'
+  | 'invoices.accounts'
+  | 'payments.ledger'
+  | 'customers.walk-in'
+  | 'receipts.stock'
+  | 'adjustments.stock'
+  | 'dates.future'
 
 export interface IntegrityCheckResult {
   readonly id: IntegrityCheckId
@@ -58,6 +79,7 @@ interface Finding {
 
 /** Runs every check against `db` and returns the report. Read-only. */
 export function runIntegrityCheck(db: Db, options: IntegrityCheckOptions): IntegrityReport {
+  const now = options.now ?? (() => new Date())
   const schemaVersion = readUserVersion(db)
   // The business checks need the V1 tables, which exist from schema 1.
   const hasSchema = schemaVersion >= 1
@@ -71,9 +93,50 @@ export function runIntegrityCheck(db: Db, options: IntegrityCheckOptions): Integ
     checkSchemaHistory(db, options.migrations),
     businessCheck('inventory.stock', 'Stock quantities and values', hasSchema, () => inventory(db)),
     businessCheck('ledger.entries', 'Customer ledger entries', hasSchema, () => ledgerEntries(db)),
-    businessCheck('ledger.balances', 'Customer balances', hasSchema, () => ledgerBalances(db))
+    businessCheck('ledger.balances', 'Customer balances', hasSchema, () => ledgerBalances(db)),
+    businessCheck('invoices.totals', 'Invoice lines and totals', hasSchema, () =>
+      documents(invoiceTotalsFindings(db), 'invoice(s) checked: their lines and totals add up.')
+    ),
+    businessCheck('invoices.stock', 'Invoice stock movements', hasSchema, () =>
+      documents(
+        invoiceStockFindings(db),
+        'invoice(s) checked: every line took, and every void returned, exactly its stock.'
+      )
+    ),
+    businessCheck('invoices.accounts', 'Invoice customer accounts', hasSchema, () =>
+      documents(
+        invoiceAccountFindings(db),
+        'invoice(s) checked: their account entries and payments are as expected.'
+      )
+    ),
+    businessCheck('payments.ledger', 'Payment account entries', hasSchema, () =>
+      documents(
+        paymentLedgerFindings(db),
+        'payment(s) checked: each is on the customer account as expected.'
+      )
+    ),
+    businessCheck('customers.walk-in', 'Walk-in customer account', hasSchema, () =>
+      documents(walkInFindings(db), 'walk-in account checked: its balance is zero.')
+    ),
+    businessCheck('receipts.stock', 'Stock receipt movements', hasSchema, () =>
+      documents(
+        receiptStockFindings(db),
+        'receipt(s) checked: every line added, and every void removed, exactly its stock.'
+      )
+    ),
+    businessCheck('adjustments.stock', 'Stock adjustment movements', hasSchema, () =>
+      documents(
+        adjustmentStockFindings(db),
+        'adjustment(s) checked: each has exactly its own stock movement.'
+      )
+    ),
+    businessCheck('dates.future', 'Business dates', hasSchema, () =>
+      documents(
+        futureDateFindings(db, localDateString(now())),
+        'dated record(s) checked: none is dated after today.'
+      )
+    )
   ]
-  const now = options.now ?? (() => new Date())
   return { status: worst(checks), checkedAt: now().toISOString(), schemaVersion, checks }
 }
 
@@ -315,6 +378,14 @@ function ledgerBalances(db: Db): Finding {
   }
   const [{ n }] = db.all<{ n: number }>('SELECT count(*) AS n FROM customers')
   return ok(`${n} customer balance(s) match the ledger.`)
+}
+
+/** A document check's findings: an error listing them, or OK with how many documents were checked. */
+function documents(findings: DocumentFindings, okSummary: string): Finding {
+  if (findings.issues.length > 0) {
+    return error(`${findings.issues.length} problem(s) found.`, findings.issues)
+  }
+  return ok(`${findings.checked} ${okSummary}`)
 }
 
 /** Runs one check. A check that throws is reported as an error: the report is always complete. */

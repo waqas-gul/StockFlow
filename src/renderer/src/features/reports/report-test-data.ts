@@ -29,13 +29,6 @@ export const basePl: ProfitLossReport = {
       netValueMinor: 0
     },
     {
-      reason: 'RECEIPT_COST_CORRECTION',
-      count: 0,
-      valueAddedMinor: 0,
-      valueRemovedMinor: 0,
-      netValueMinor: 0
-    },
-    {
       reason: 'OTHER_CORRECTION',
       count: 0,
       valueAddedMinor: 0,
@@ -46,6 +39,14 @@ export const basePl: ProfitLossReport = {
   inventoryCorrectionsNetMinor: 0,
   inventoryCorrectionDetails: [],
   profitAfterDataCorrectionsMinor: 300_000,
+  receiptCostCorrections: {
+    reason: 'RECEIPT_COST_CORRECTION',
+    count: 0,
+    valueAddedMinor: 0,
+    valueRemovedMinor: 0,
+    netValueMinor: 0
+  },
+  receiptCostCorrectionDetails: [],
   expenseCategories: [],
   openingStockValueMinor: 0,
   showFrozenCogsNote: false

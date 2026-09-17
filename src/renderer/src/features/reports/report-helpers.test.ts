@@ -111,7 +111,7 @@ describe('profit and loss statement', () => {
       ['Net Operating Profit', 355_000, null],
       ['Data Corrections', null, null],
       ['Purchase Cost Corrections', 25_000, 'deduct'],
-      ['Inventory Quantity / Value Corrections', 7_000, 'deduct'],
+      ['Inventory Quantity Corrections', 7_000, 'deduct'],
       ['Profit After Data Corrections', 323_000, null]
     ])
   })

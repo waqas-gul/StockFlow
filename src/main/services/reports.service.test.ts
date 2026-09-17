@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Customer, CustomerCreateInput } from '@shared/customers'
-import type { ExpenseCategory } from '@shared/expenses'
+import { PURCHASE_COST_CORRECTION_CATEGORY_ID, type ExpenseCategory } from '@shared/expenses'
 import type {
   InvoiceCreateInput,
   InvoiceLineInput,
@@ -8,11 +8,7 @@ import type {
   InvoiceSaveResult
 } from '@shared/invoices'
 import type { Product, ProductUnitInput } from '@shared/products'
-import {
-  PURCHASE_COST_CORRECTION_CATEGORY_ID,
-  type ProfitLossReport,
-  type ReportPeriod
-} from '@shared/reports'
+import type { ProfitLossReport, ReportPeriod } from '@shared/reports'
 import type { StockAdjustmentInput, StockReceiptDetail } from '@shared/stock'
 import type { Db } from '../db/adapter'
 import { createSchemaDatabase, createTempDir, thrown, type TempDir } from '../db/test-utils'
@@ -26,7 +22,7 @@ import {
 } from './expense-categories.service'
 import { createExpense, voidExpense } from './expenses.service'
 import { voidInvoice } from './invoice-void.service'
-import { createInvoice } from './invoices.service'
+import { createInvoice, getInvoice } from './invoices.service'
 import { createPayment } from './payments.service'
 import { createProduct, setProductActive } from './products.service'
 import {
@@ -479,14 +475,27 @@ describe('profit and loss', () => {
     }
     expect(profitLossReport(db, AUGUST)).toMatchObject(expected)
 
-    // Renamed, it is still the purchase cost correction category; a new category with the old name is not.
-    updateExpenseCategory(db, {
-      id: PURCHASE_COST_CORRECTION_CATEGORY_ID,
-      name: 'Supplier Price Fixes',
-      group: 'GENERAL'
-    })
+    // Its name and group cannot be edited; a look-alike category is an ordinary expense. Reports go by id only.
+    expect(
+      failure(() =>
+        updateExpenseCategory(db, {
+          id: PURCHASE_COST_CORRECTION_CATEGORY_ID,
+          name: 'Rent',
+          group: 'GENERAL'
+        })
+      )
+    ).toMatchObject({ code: 'FORBIDDEN_STATE' })
+    expect(
+      failure(() =>
+        updateExpenseCategory(db, {
+          id: PURCHASE_COST_CORRECTION_CATEGORY_ID,
+          name: 'Purchase Cost Correction',
+          group: 'SHOP'
+        })
+      )
+    ).toMatchObject({ code: 'FORBIDDEN_STATE' })
     const lookalike = createExpenseCategory(db, {
-      name: 'Purchase Cost Correction',
+      name: 'Purchase Cost Corrections (supplier)',
       group: 'GENERAL'
     })
     expense('2026-08-04', lookalike.id, 5_000)
@@ -501,13 +510,13 @@ describe('profit and loss', () => {
     expect(
       report.expenseCategories.map((item) => [item.name, item.isPurchaseCostCorrection])
     ).toEqual([
-      ['Supplier Price Fixes', true],
+      ['Purchase Cost Correction', true],
       ['Shop Expenses', false],
-      ['Purchase Cost Correction', false]
+      ['Purchase Cost Corrections (supplier)', false]
     ])
   })
 
-  it('H: inventory data corrections are shown separately, once, outside operating profit', () => {
+  it('H: receipt quantity and other corrections are shown once, below operating profit; a receipt cost correction only for information', () => {
     const receipt = receive('2026-08-01', [[widget.id, piece(), 20, 60_000]])
     const receiptItemId = receipt.lines[0].id
     // Cost 60,000 → 61,000 on 20 pieces: +20,000. Stock Q 20, V 1,220,000.
@@ -533,11 +542,19 @@ describe('profit and loss', () => {
       unitCostMinor: 50_000
     })
     const report = profitLossReport(db, AUGUST)
+    // −122,000 + 100,000: the +20,000 cost correction is not in the arithmetic.
     expect(report).toMatchObject({
       ...ZERO_PL,
-      inventoryCorrectionsNetMinor: -2_000,
-      profitAfterDataCorrectionsMinor: -2_000,
+      inventoryCorrectionsNetMinor: -22_000,
+      profitAfterDataCorrectionsMinor: -22_000,
       showFrozenCogsNote: true
+    })
+    expect(report.receiptCostCorrections).toEqual({
+      reason: 'RECEIPT_COST_CORRECTION',
+      count: 1,
+      valueAddedMinor: 20_000,
+      valueRemovedMinor: 0,
+      netValueMinor: 20_000
     })
     expect(report.inventoryCorrections).toEqual([
       {
@@ -546,13 +563,6 @@ describe('profit and loss', () => {
         valueAddedMinor: 0,
         valueRemovedMinor: 122_000,
         netValueMinor: -122_000
-      },
-      {
-        reason: 'RECEIPT_COST_CORRECTION',
-        count: 1,
-        valueAddedMinor: 20_000,
-        valueRemovedMinor: 0,
-        netValueMinor: 20_000
       },
       {
         reason: 'OTHER_CORRECTION',
@@ -572,12 +582,20 @@ describe('profit and loss', () => {
         item.valueMinor
       ])
     ).toEqual([
-      ['2026-08-02', 'RECEIPT_COST_CORRECTION', 'W-001', 0, null, 20_000],
       ['2026-08-03', 'RECEIPT_QTY_CORRECTION', 'W-001', -2, '−2 Piece', -122_000],
       ['2026-08-04', 'OTHER_CORRECTION', 'W-001', 2, '+2 Piece', 100_000]
     ])
-    // Counted once: the corrections plus the receipt are exactly the inventory value.
-    expect(stockReport(db).totalValueMinor).toBe(1_200_000 - 2_000)
+    expect(
+      report.receiptCostCorrectionDetails.map((item) => [
+        item.adjustmentDate,
+        item.reason,
+        item.productCode,
+        item.quantityText,
+        item.valueMinor
+      ])
+    ).toEqual([['2026-08-02', 'RECEIPT_COST_CORRECTION', 'W-001', null, 20_000]])
+    // The inventory value holds every correction, the cost correction included.
+    expect(stockReport(db).totalValueMinor).toBe(1_200_000 + 20_000 - 122_000 + 100_000)
   })
 
   it('I and J: opening stock, receipts and receipt voids are not profit', () => {
@@ -613,6 +631,196 @@ describe('profit and loss', () => {
 })
 
 // --- Periods ----------------------------------------------------------------------------------------------------------
+
+describe('receipt cost corrections: inventory value and future COGS, never current profit', () => {
+  /** 20 Piece received at 600.00, 5 sold at 1,000.00 (COGS 300,000), a 10,000 shop expense. */
+  function trade(): { receiptItemId: number; earlyId: number } {
+    const receipt = receive('2026-08-01', [[widget.id, piece(), 20, 60_000]])
+    const early = post('2026-08-02', [pieces(5)])
+    expense('2026-08-02', SHOP_EXPENSES, 10_000)
+    return { receiptItemId: receipt.lines[0].id, earlyId: early.id }
+  }
+
+  const correctTo = (receiptItemId: number, unitCostMinor: number): void =>
+    adjust('2026-08-03', widget.id, {
+      reason: 'RECEIPT_COST_CORRECTION',
+      receiptItemId,
+      unitCostMinor
+    })
+
+  it('A: a correction up (+100,000) raises the inventory value, but neither Net Operating Profit nor Profit After Data Corrections', () => {
+    const { receiptItemId } = trade()
+    const before = profitLossReport(db, AUGUST)
+    expect(before).toMatchObject({
+      netOperatingProfitMinor: 190_000,
+      profitAfterDataCorrectionsMinor: 190_000
+    })
+    expect(stockReport(db).totalValueMinor).toBe(900_000)
+
+    // 650.00 × 20 − 1,200,000 = +100,000.
+    correctTo(receiptItemId, 65_000)
+
+    expect(stockReport(db).totalValueMinor).toBe(1_000_000)
+    const after = profitLossReport(db, AUGUST)
+    expect(after).toMatchObject({
+      goodsRevenueMinor: 500_000,
+      cogsMinor: 300_000,
+      grossProfitMinor: 200_000,
+      netOperatingProfitMinor: 190_000,
+      inventoryCorrectionsNetMinor: 0,
+      profitAfterDataCorrectionsMinor: 190_000,
+      showFrozenCogsNote: true
+    })
+    expect(after.receiptCostCorrections).toEqual({
+      reason: 'RECEIPT_COST_CORRECTION',
+      count: 1,
+      valueAddedMinor: 100_000,
+      valueRemovedMinor: 0,
+      netValueMinor: 100_000
+    })
+    expect(after.inventoryCorrections.every((total) => total.count === 0)).toBe(true)
+    expect(after.inventoryCorrectionDetails).toEqual([])
+  })
+
+  it('B: a correction down (−100,000) lowers the inventory value, but neither profit figure', () => {
+    const { receiptItemId } = trade()
+    // 550.00 × 20 − 1,200,000 = −100,000.
+    correctTo(receiptItemId, 55_000)
+    expect(stockReport(db).totalValueMinor).toBe(800_000)
+    const after = profitLossReport(db, AUGUST)
+    expect(after).toMatchObject({
+      netOperatingProfitMinor: 190_000,
+      inventoryCorrectionsNetMinor: 0,
+      profitAfterDataCorrectionsMinor: 190_000
+    })
+    expect(after.receiptCostCorrections).toEqual({
+      reason: 'RECEIPT_COST_CORRECTION',
+      count: 1,
+      valueAddedMinor: 0,
+      valueRemovedMinor: 100_000,
+      netValueMinor: -100_000
+    })
+  })
+
+  it('C and D: the corrected value reaches the COGS of later sales only; earlier frozen COGS never changes', () => {
+    const { receiptItemId, earlyId } = trade()
+    correctTo(receiptItemId, 65_000)
+    // Q 15, V 1,000,000: 5 Piece leave at round(1,000,000 × 5 ÷ 15) = 333,333 (300,000 without the correction).
+    const later = post('2026-08-04', [pieces(5)])
+    expect(later.cogsMinor).toBe(333_333)
+
+    const early = getInvoice(db, earlyId)
+    expect(early.cogsMinor).toBe(300_000)
+    expect(early.lines.map((line) => line.costMinor)).toEqual([300_000])
+    expect(
+      db.get<{ v: number }>(
+        `SELECT m.value_minor AS v FROM stock_movements AS m JOIN invoice_items AS ii ON ii.id = m.invoice_item_id
+         WHERE ii.invoice_id = ? AND m.type = 'SALE'`,
+        [earlyId]
+      )!.v
+    ).toBe(-300_000)
+    expect(pl('2026-08-01', '2026-08-02')).toMatchObject({ cogsMinor: 300_000 })
+
+    // The month: revenue 1,000,000 − COGS (300,000 + 333,333) − expense 10,000; the correction itself adds nothing.
+    expect(profitLossReport(db, AUGUST)).toMatchObject({
+      goodsRevenueMinor: 1_000_000,
+      cogsMinor: 633_333,
+      grossProfitMinor: 366_667,
+      netOperatingProfitMinor: 356_667,
+      profitAfterDataCorrectionsMinor: 356_667
+    })
+    expect(stockReport(db).totalValueMinor).toBe(1_000_000 - 333_333)
+  })
+})
+
+describe('final accounting acceptance scenario', () => {
+  it('counts every figure once: the cost correction only through later COGS; corrections and Purchase Cost Correction below Net Operating Profit', () => {
+    // 1. Receipt: widget 20 Piece @ 600.00 (V 1,200,000); gadget 10 Kg @ 300.00 (V 300,000).
+    const receipt = receive('2026-08-01', [
+      [widget.id, piece(), 20, 60_000],
+      [gadget.id, kg(), 10, 30_000]
+    ])
+    // 2. Sale A (Ali): 5 Piece = 500,000; COGS 5 × 60,000 = 300,000. Widget Q 15, V 900,000.
+    const saleA = post('2026-08-02', [pieces(5)])
+    // 3. Receipt cost correction: 650.00 × 20 − 1,200,000 = +100,000. Widget Q 15, V 1,000,000.
+    adjust('2026-08-03', widget.id, {
+      reason: 'RECEIPT_COST_CORRECTION',
+      receiptItemId: receipt.lines[0].id,
+      unitCostMinor: 65_000
+    })
+    // 4. Sale B (Ali): 5 Piece = 500,000; COGS round(1,000,000 × 5 ÷ 15) = 333,333. Widget Q 10, V 666,667.
+    const saleB = post('2026-08-04', [pieces(5)])
+    // 5. Receipt quantity correction OUT 1 Piece at round(666,667 ÷ 10) = 66,667. Widget Q 9, V 600,000.
+    adjust('2026-08-05', widget.id, {
+      reason: 'RECEIPT_QTY_CORRECTION',
+      direction: 'OUT',
+      receiptItemId: receipt.lines[0].id,
+      unitId: piece(),
+      quantity: 1
+    })
+    // 6. Other correction IN 1 Kg @ 250.00 = +25,000. Gadget Q 11, V 325,000.
+    adjust('2026-08-06', gadget.id, {
+      reason: 'OTHER_CORRECTION',
+      direction: 'IN',
+      unitId: kg(),
+      quantity: 1,
+      unitCostMinor: 25_000
+    })
+    // 7. Damage 1 Piece at round(600,000 ÷ 9) = 66,667. Widget Q 8, V 533,333.
+    adjust('2026-08-07', widget.id, { reason: 'DAMAGE', unitId: piece(), quantity: 1 })
+    // 8. Count surplus 1 Kg at round(325,000 ÷ 11) = 29,545. Gadget Q 12, V 354,545.
+    adjust('2026-08-08', gadget.id, { reason: 'COUNT_SURPLUS', unitId: kg(), quantity: 1 })
+    // 9. Expenses: Shop 20,000, Monthly / General 50,000, Purchase Cost Correction 15,000, and a void 9,999.
+    expense('2026-08-09', SHOP_EXPENSES, 20_000)
+    expense('2026-08-09', GENERAL_EXPENSES, 50_000)
+    expense('2026-08-09', PURCHASE_COST_CORRECTION_CATEGORY_ID, 15_000)
+    voidExpense(db, expense('2026-08-09', SHOP_EXPENSES, 9_999))
+    // 10. Sale C (Bilal): 2 Kg = 100,000 + freight 10,000; COGS round(354,545 × 2 ÷ 12) = 59,091. Gadget Q 10, V 295,454.
+    const saleC = post('2026-08-10', [kilos(2)], { customerId: bilal.id, freightMinor: 10_000 })
+    // 11. Sale D (Ali): 2 Piece = 200,000; COGS 133,333; voided today (September), so August never counts it.
+    const saleD = post('2026-08-11', [pieces(2)])
+    voidInvoiceNow(saleD.id)
+
+    expect([saleA.cogsMinor, saleB.cogsMinor, saleC.cogsMinor, saleD.cogsMinor]).toEqual([
+      300_000, 333_333, 59_091, 133_333
+    ])
+    // Inventory: 1,500,000 received + 100,000 cost correction − COGS 692,424 − 66,667 quantity correction + 25,000
+    // other correction − 66,667 damage + 29,545 surplus = 828,787 (sale D reversed).
+    const stock = stockReport(db)
+    expect(stock.rows.map((row) => [row.code, row.qtyBase, row.valueMinor])).toEqual([
+      ['G-001', 10, 295_454],
+      ['W-001', 8, 533_333]
+    ])
+    expect(stock.totalValueMinor).toBe(828_787)
+
+    const report = profitLossReport(db, AUGUST)
+    // Gross profit 1,100,000 − 692,424 = 407,576. Net Operating Profit 407,576 + 10,000 freight + 29,545 surplus
+    // − 70,000 expenses − 66,667 damage = 310,454. After data corrections: 310,454 − 15,000 Purchase Cost Correction
+    // − 66,667 + 25,000 = 253,787. (Counting the +100,000 cost correction as well would give 353,787.)
+    expect(report).toMatchObject({
+      postedInvoiceCount: 3,
+      goodsRevenueMinor: 1_100_000,
+      cogsMinor: 692_424,
+      grossProfitMinor: 407_576,
+      freightIncomeMinor: 10_000,
+      stockGainsMinor: 29_545,
+      shopExpensesMinor: 20_000,
+      generalExpensesMinor: 50_000,
+      operatingExpensesMinor: 70_000,
+      stockDamageMinor: 66_667,
+      stockLossesMinor: 66_667,
+      netOperatingProfitMinor: 310_454,
+      purchaseCostCorrectionsMinor: 15_000,
+      inventoryCorrectionsNetMinor: -41_667,
+      profitAfterDataCorrectionsMinor: 253_787,
+      showFrozenCogsNote: true
+    })
+    expect(report.receiptCostCorrections).toMatchObject({ count: 1, netValueMinor: 100_000 })
+    expect(
+      report.expenseCategories.find((category) => category.isPurchaseCostCorrection)
+    ).toMatchObject({ categoryId: PURCHASE_COST_CORRECTION_CATEGORY_ID, amountMinor: 15_000 })
+  })
+})
 
 describe('report periods', () => {
   beforeEach(() => {

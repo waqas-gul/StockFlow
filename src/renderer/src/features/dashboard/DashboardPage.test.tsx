@@ -22,7 +22,8 @@ const settings: SettingsView = {
     'invoice.startNumber': 1,
     'invoice.paperSize': 'A4'
   },
-  minorDigitsLocked: true
+  currencyLocked: true,
+  startNumberLocked: false
 }
 
 function trend(sales: Record<string, [number, number]> = {}): DailySales[] {
@@ -255,7 +256,7 @@ describe('Dashboard', () => {
       'Receivables Rs 10,900.00 1 customer owes money',
       'Customer Advances Rs 950.00 1 customer with credit',
       'Inventory Value Rs 27,000.00 3 active products',
-      'Low Stock 7 Products Needs attention'
+      'Stock Alerts 7 Products Low or out of stock'
     ]) {
       expect(shown).toContain(figure)
     }
@@ -284,7 +285,7 @@ describe('Dashboard', () => {
     const html = render(BUSY)
     const shown = text(html)
     expect(shown).toContain(
-      'Expenses This Month Total Expenses Rs 500.00 Shop Rs 100.00 Monthly / General Rs 400.00'
+      'Operating Expenses This Month Total Expenses Rs 500.00 Shop Rs 100.00 Monthly / General Rs 400.00'
     )
     expect(shown).toContain('Purchase cost corrections of Rs 50.00 are not included.')
     expect(html.match(/data-slice=/g)).toHaveLength(2)
@@ -333,7 +334,7 @@ describe('Dashboard', () => {
       'Receivables Rs 0.00 0 customers owe money',
       'Customer Advances Rs 0.00 0 customers with credit',
       'Inventory Value Rs 0.00 0 active products',
-      'Low Stock 0 Products Nothing below its low-stock level'
+      'Stock Alerts 0 Products Low or out of stock'
     ]) {
       expect(shown).toContain(figure)
     }

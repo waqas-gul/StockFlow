@@ -300,7 +300,7 @@ export function getInvoice(db: Db, id: unknown): InvoiceDetail {
   return readInvoice(db, parseInput(InvoiceIdSchema, id))
 }
 
-/** Invoice History: newest first, filtered by search words, date range and status. */
+/** Invoice History: newest first, filtered by search words (number, Invoice Code, customer), date range and status. */
 export function listInvoices(db: Db, input: unknown): ListPage<InvoiceSummary> {
   const filters = parseInput(InvoiceListInputSchema, input)
   const { page, pageSize } = filters
@@ -310,8 +310,9 @@ export function listInvoices(db: Db, input: unknown): ListPage<InvoiceSummary> {
     .split(/\s+/)
     .filter((word) => word !== '')
     .slice(0, MAX_SEARCH_WORDS)
-  // The saved names: an invoice is found by the name it was made out to (and by the customer code, which never changes).
-  const columns = ['i.invoice_no', 'c.code', 'i.cust_name', 'i.cust_shop_name']
+  // The saved names: an invoice is found by the name it was made out to (and by the customer code, which never changes),
+  // and by its Invoice Code. LIKE ignores letter case.
+  const columns = ['i.invoice_no', 'i.invoice_code', 'c.code', 'i.cust_name', 'i.cust_shop_name']
   for (const word of words) {
     const pattern = `%${word.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
     clauses.push(`(${columns.map((column) => `${column} LIKE ? ESCAPE '\\'`).join(' OR ')})`)

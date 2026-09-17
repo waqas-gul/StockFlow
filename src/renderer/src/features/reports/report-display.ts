@@ -113,7 +113,7 @@ export function profitLossRows(report: ProfitLossReport): StatementRow[] {
       rows.push(
         line(
           'inventory-corrections',
-          'Inventory Quantity / Value Corrections',
+          'Inventory Quantity Corrections',
           Math.abs(net),
           net < 0 ? 'deduct' : 'add'
         )
@@ -125,7 +125,7 @@ export function profitLossRows(report: ProfitLossReport): StatementRow[] {
       label: 'Profit After Data Corrections',
       minor: report.profitAfterDataCorrectionsMinor,
       effect: null,
-      hint: 'Net Operating Profit − Purchase Cost Corrections ± Inventory Corrections'
+      hint: 'Net Operating Profit − Purchase Cost Corrections ± Inventory Quantity Corrections'
     })
   }
   return rows

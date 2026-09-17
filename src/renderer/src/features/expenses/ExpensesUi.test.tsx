@@ -25,7 +25,8 @@ const settings: SettingsView = {
     'invoice.startNumber': 1,
     'invoice.paperSize': 'A4'
   },
-  minorDigitsLocked: true
+  currencyLocked: true,
+  startNumberLocked: false
 }
 
 const categories: ExpenseCategory[] = [
@@ -216,10 +217,18 @@ describe('Void Expense confirmation', () => {
 describe('Manage Categories', () => {
   it('lists every category with its group, expenses and status, and adds one with a group', () => {
     const queryClient = new QueryClient()
-    queryClient.setQueryData(queryKeys.expenseCategories, categories)
+    queryClient.setQueryData(queryKeys.expenseCategories, [
+      ...categories,
+      { id: 4, name: 'Purchase Cost Correction', group: 'GENERAL', isActive: true, expenseCount: 2 }
+    ])
     const html = render(<ExpenseCategoriesManager />, queryClient)
     const shown = text(html)
     expect(shown).toContain('Category Group Expenses Status Actions')
+    // Reports use the Purchase Cost Correction category by id: its Edit is unavailable, Deactivate is not.
+    expect(shown).toContain(
+      'Purchase Cost Correction Used by Reports: its name and group cannot change. Monthly / General 2 Active Edit Deactivate'
+    )
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Edit Purchase Cost Correction"/)
     expect(shown).toContain('Freight Paid Shop 0 Active Edit Deactivate')
     expect(shown).toContain('Monthly / General Expenses Monthly / General 1 Active Edit Deactivate')
     expect(shown).toContain('Rent Monthly / General 1 Inactive Edit Activate')

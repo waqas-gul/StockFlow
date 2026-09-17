@@ -7,6 +7,11 @@ import type {
 } from '@shared/expenses'
 import type { Db } from '../db/adapter'
 import { createSchemaDatabase, createTempDir, thrown, type TempDir } from '../db/test-utils'
+import {
+  EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE,
+  PROTECTED_EXPENSE_CATEGORY_MESSAGE,
+  PURCHASE_COST_CORRECTION_CATEGORY_ID
+} from '@shared/expenses'
 import { AppFailure } from '../errors'
 import {
   createExpenseCategory,
@@ -227,6 +232,66 @@ describe('expense categories', () => {
     expect(setExpenseCategoryActive(db, { id: shop, active: true }).isActive).toBe(true)
     // Its historical classification is unchanged.
     expect(getExpense(db, expense.id).categoryGroup).toBe('SHOP')
+  })
+
+  it('protects the Purchase Cost Correction category (id 4): its name and group never change, but it may be deactivated', () => {
+    const protectedFailure = {
+      code: 'FORBIDDEN_STATE',
+      message: PROTECTED_EXPENSE_CATEGORY_MESSAGE
+    }
+    const id = PURCHASE_COST_CORRECTION_CATEGORY_ID
+    const seeded = { id, name: 'Purchase Cost Correction', group: 'GENERAL', isActive: true }
+    expect(listExpenseCategories(db).find((item) => item.id === id)).toMatchObject(seeded)
+
+    // Unused, it still cannot be renamed, moved to the other group, or given another letter case.
+    for (const change of [
+      { name: 'Rent', group: 'GENERAL' as const },
+      { name: 'Purchase Cost Correction', group: 'SHOP' as const },
+      { name: 'Rent', group: 'SHOP' as const },
+      { name: 'purchase cost correction', group: 'GENERAL' as const }
+    ]) {
+      expect(failure(() => updateExpenseCategory(db, { id, ...change }))).toMatchObject(
+        protectedFailure
+      )
+    }
+    // Saving it unchanged is not an error.
+    expect(
+      updateExpenseCategory(db, { id, name: 'Purchase Cost Correction', group: 'GENERAL' })
+    ).toMatchObject(seeded)
+
+    // Used, the same; deactivating and reactivating stay allowed and keep the name and group.
+    add({ categoryId: id })
+    expect(
+      failure(() =>
+        updateExpenseCategory(db, { id, name: 'Supplier Price Fixes', group: 'GENERAL' })
+      )
+    ).toMatchObject(protectedFailure)
+    expect(setExpenseCategoryActive(db, { id, active: false })).toMatchObject({
+      ...seeded,
+      isActive: false,
+      expenseCount: 1
+    })
+    expect(setExpenseCategoryActive(db, { id, active: true })).toMatchObject({
+      ...seeded,
+      expenseCount: 1
+    })
+    expect(db.get('SELECT name, grp FROM expense_categories WHERE id = ?', [id])).toEqual({
+      name: 'Purchase Cost Correction',
+      grp: 'GENERAL'
+    })
+
+    // Other categories keep the Phase 10 rules: an unused one may change group, a used one may not.
+    const rent = createExpenseCategory(db, { name: 'Rent', group: 'SHOP' })
+    expect(
+      updateExpenseCategory(db, { id: rent.id, name: 'Shop Rent', group: 'GENERAL' })
+    ).toMatchObject({
+      name: 'Shop Rent',
+      group: 'GENERAL'
+    })
+    add({ categoryId: rent.id })
+    expect(
+      failure(() => updateExpenseCategory(db, { id: rent.id, name: 'Shop Rent', group: 'SHOP' }))
+    ).toMatchObject({ code: 'FORBIDDEN_STATE', message: EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE })
   })
 
   it('deactivates and reactivates a category, which stays on its expenses', () => {

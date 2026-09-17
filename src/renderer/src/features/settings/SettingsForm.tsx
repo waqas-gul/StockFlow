@@ -3,7 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle } from 'lucide-react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
-import type { EditableSettings, EditableSettingsPatch, SettingsView } from '@shared/settings'
+import {
+  CURRENCY_LOCKED_MESSAGE,
+  START_NUMBER_LOCKED_MESSAGE,
+  type EditableSettings,
+  type EditableSettingsPatch,
+  type SettingsView
+} from '@shared/settings'
 import { Button } from '@renderer/components/ui/button'
 import {
   Card,
@@ -19,6 +25,7 @@ import { Separator } from '@renderer/components/ui/separator'
 import { ApiError, unwrap } from '@renderer/lib/api'
 import { settingsQuery } from '@renderer/lib/app-queries'
 import { queryKeys } from '@renderer/lib/query-keys'
+import { cn } from '@renderer/lib/utils'
 import {
   formFieldErrors,
   invoiceNumberPreview,
@@ -34,7 +41,13 @@ import {
 export function SettingsSection(): React.JSX.Element {
   const { data, error } = useQuery(settingsQuery)
   if (data) {
-    return <SettingsForm settings={data.values} minorDigitsLocked={data.minorDigitsLocked} />
+    return (
+      <SettingsForm
+        settings={data.values}
+        currencyLocked={data.currencyLocked}
+        startNumberLocked={data.startNumberLocked}
+      />
+    )
   }
   return (
     <Card>
@@ -52,13 +65,28 @@ export function SettingsSection(): React.JSX.Element {
   )
 }
 
+/**
+ * Read-only rather than disabled: React Hook Form leaves a disabled field's value out of the form. The main process
+ * decides the locks and enforces them; the form only shows them.
+ */
+function lockedProps(locked: boolean): React.ComponentProps<'input'> {
+  return {
+    readOnly: locked,
+    'aria-readonly': locked || undefined,
+    className: locked ? 'cursor-not-allowed bg-muted text-muted-foreground' : undefined
+  }
+}
+
 export function SettingsForm({
   settings,
-  minorDigitsLocked
+  currencyLocked,
+  startNumberLocked
 }: {
   settings: EditableSettings
-  /** Financial data exists: the main process refuses other decimal places, so the field is read-only. */
-  minorDigitsLocked: boolean
+  /** Financial data exists: the main process refuses another currency code, symbol or decimal places. */
+  currencyLocked: boolean
+  /** Invoice numbering has begun: the main process refuses another starting number. */
+  startNumberLocked: boolean
 }): React.JSX.Element {
   const queryClient = useQueryClient()
   const form = useForm<SettingsFormInput, unknown, SettingsFormValues>({
@@ -127,34 +155,38 @@ export function SettingsForm({
       <Card>
         <CardHeader>
           <CardTitle>Currency</CardTitle>
-          <CardDescription>How amounts are written.</CardDescription>
+          <CardDescription>
+            {currencyLocked ? CURRENCY_LOCKED_MESSAGE : 'How amounts are written.'}
+          </CardDescription>
         </CardHeader>
         <Separator />
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <Field
             id="currencyCode"
             label="Currency code"
-            hint="Three letters, for example PKR."
+            hint={currencyLocked ? 'Locked.' : 'Three letters, for example PKR.'}
             error={errors.currencyCode?.message}
           >
             <Input
               id="currencyCode"
-              className="uppercase"
               aria-invalid={errors.currencyCode ? true : undefined}
               maxLength={3}
+              {...lockedProps(currencyLocked)}
+              className={cn('uppercase', lockedProps(currencyLocked).className)}
               {...register('currencyCode')}
             />
           </Field>
           <Field
             id="currencySymbol"
             label="Currency symbol"
-            hint="Shown with amounts, for example Rs."
+            hint={currencyLocked ? 'Locked.' : 'Shown with amounts, for example Rs.'}
             error={errors.currencySymbol?.message}
           >
             <Input
               id="currencySymbol"
               aria-invalid={errors.currencySymbol ? true : undefined}
               maxLength={8}
+              {...lockedProps(currencyLocked)}
               {...register('currencySymbol')}
             />
           </Field>
@@ -162,8 +194,8 @@ export function SettingsForm({
             id="minorDigits"
             label="Minor digits"
             hint={
-              minorDigitsLocked
-                ? 'Locked: decimal places cannot change after financial data has been entered.'
+              currencyLocked
+                ? 'Locked.'
                 : 'Digits after the decimal point: 2 for Rs 10.50. Set it before you enter prices.'
             }
             error={errors.minorDigits?.message}
@@ -174,12 +206,7 @@ export function SettingsForm({
               inputMode="numeric"
               min={0}
               max={4}
-              // Read-only rather than disabled: React Hook Form leaves a disabled field's value out of the form.
-              readOnly={minorDigitsLocked}
-              aria-readonly={minorDigitsLocked || undefined}
-              className={
-                minorDigitsLocked ? 'cursor-not-allowed bg-muted text-muted-foreground' : undefined
-              }
+              {...lockedProps(currencyLocked)}
               aria-invalid={errors.minorDigits ? true : undefined}
               {...register('minorDigits', { valueAsNumber: true })}
             />
@@ -228,7 +255,11 @@ export function SettingsForm({
           <Field
             id="invoiceStartNumber"
             label="Starting number"
-            hint="The number of the first invoice StockFlow creates."
+            hint={
+              startNumberLocked
+                ? START_NUMBER_LOCKED_MESSAGE
+                : 'The number of the first invoice StockFlow creates.'
+            }
             error={errors.invoiceStartNumber?.message}
           >
             <Input
@@ -236,6 +267,7 @@ export function SettingsForm({
               type="number"
               inputMode="numeric"
               min={1}
+              {...lockedProps(startNumberLocked)}
               aria-invalid={errors.invoiceStartNumber ? true : undefined}
               {...register('invoiceStartNumber', { valueAsNumber: true })}
             />
@@ -268,10 +300,12 @@ export function SettingsForm({
               <p className="text-sm text-destructive">{errors.paperSize.message}</p>
             )}
           </div>
-          <p className="text-sm text-muted-foreground sm:col-span-3">
-            First invoice number:{' '}
-            <span className="font-medium text-foreground">{preview ?? '—'}</span>
-          </p>
+          {!startNumberLocked && (
+            <p className="text-sm text-muted-foreground sm:col-span-3">
+              First invoice number:{' '}
+              <span className="font-medium text-foreground">{preview ?? '—'}</span>
+            </p>
+          )}
         </CardContent>
       </Card>
 

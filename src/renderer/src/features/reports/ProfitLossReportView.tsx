@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Info } from 'lucide-react'
 import { formatDisplayDate } from '@shared/dates'
 import { EXPENSE_GROUP_LABELS } from '@shared/expenses'
-import { FROZEN_COGS_NOTE, type ProfitLossReport, type ReportPeriod } from '@shared/reports'
+import {
+  FROZEN_COGS_NOTE,
+  RECEIPT_COST_CORRECTION_NOTE,
+  type ProfitLossReport,
+  type ReportPeriod
+} from '@shared/reports'
 import {
   Table,
   TableBody,
@@ -39,6 +44,7 @@ export function ProfitLossReportView({
   currency: CurrencyFormat
 }): React.JSX.Element {
   const money = (minor: number): string => moneyText(minor, currency)
+  const signedMoney = (minor: number): string => `${minor > 0 ? '+' : ''}${money(minor)}`
   const hasInventoryCorrections = report.inventoryCorrections.some((total) => total.count > 0)
   const hasCorrections = hasInventoryCorrections || report.purchaseCostCorrectionsMinor !== 0
   return (
@@ -162,7 +168,7 @@ export function ProfitLossReportView({
       {hasInventoryCorrections && (
         <ReportCard
           title="Inventory Data Corrections"
-          description="Receipt quantity and cost corrections and other corrections: shown below Net Operating Profit, never inside it."
+          description="Receipt quantity corrections and other corrections: shown below Net Operating Profit, never inside it."
         >
           <Table>
             <TableHeader>
@@ -202,6 +208,50 @@ export function ProfitLossReportView({
                   {money(report.inventoryCorrectionsNetMinor)}
                 </TableCell>
               </TableRow>
+            </TableBody>
+          </Table>
+        </ReportCard>
+      )}
+
+      {report.receiptCostCorrections.count > 0 && (
+        <ReportCard
+          title="Receipt Cost Corrections"
+          description="For information only: not included in any profit figure above."
+        >
+          <div className="flex flex-col gap-2 border-b px-4 py-3 text-sm">
+            <p className="flex flex-wrap items-baseline justify-between gap-2">
+              <span>Net change in inventory value</span>
+              <span className="font-semibold tabular-nums">
+                {signedMoney(report.receiptCostCorrections.netValueMinor)}
+              </span>
+            </p>
+            <p className="flex gap-2 text-muted-foreground">
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+              {RECEIPT_COST_CORRECTION_NOTE}
+            </p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">Date</TableHead>
+                <TableHead>Adjustment</TableHead>
+                <TableHead>Product</TableHead>
+                <TableHead className="pr-4 text-right">Inventory Value Change</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {report.receiptCostCorrectionDetails.map((detail) => (
+                <TableRow key={detail.adjustmentId}>
+                  <TableCell className="pl-4">{formatDisplayDate(detail.adjustmentDate)}</TableCell>
+                  <TableCell>{detail.adjustmentNo}</TableCell>
+                  <TableCell className="whitespace-normal">
+                    {detail.productCode} · {detail.productName}
+                  </TableCell>
+                  <TableCell className="pr-4 text-right tabular-nums">
+                    {signedMoney(detail.valueMinor)}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </ReportCard>

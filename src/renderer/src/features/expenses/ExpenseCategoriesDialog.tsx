@@ -7,6 +7,7 @@ import {
   EXPENSE_CATEGORY_NAME_MAX,
   EXPENSE_GROUPS,
   EXPENSE_GROUP_LABELS,
+  isProtectedExpenseCategory,
   type ExpenseCategory,
   type ExpenseGroup
 } from '@shared/expenses'
@@ -292,7 +293,14 @@ export function ExpenseCategoriesManager(): React.JSX.Element {
                   </TableRow>
                 ) : (
                   <TableRow key={category.id}>
-                    <TableCell className="pl-3 whitespace-normal">{category.name}</TableCell>
+                    <TableCell className="pl-3 whitespace-normal">
+                      {category.name}
+                      {isProtectedExpenseCategory(category.id) && (
+                        <p className="text-xs text-muted-foreground">
+                          Used by Reports: its name and group cannot change.
+                        </p>
+                      )}
+                    </TableCell>
                     <TableCell>{EXPENSE_GROUP_LABELS[category.group]}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {category.expenseCount}
@@ -305,7 +313,8 @@ export function ExpenseCategoriesManager(): React.JSX.Element {
                         <Button
                           size="sm"
                           variant="ghost"
-                          disabled={busy}
+                          disabled={busy || isProtectedExpenseCategory(category.id)}
+                          aria-label={`Edit ${category.name}`}
                           onClick={() =>
                             setEditing({
                               id: category.id,

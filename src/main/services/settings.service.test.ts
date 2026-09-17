@@ -318,30 +318,44 @@ describe('the Settings screen: readEditableSettings and updateEditableSettings',
     ).toEqual({ [key]: [message] })
   })
 
-  it('readSettingsView adds whether the decimal places are locked', () => {
-    expect(readSettingsView(db)).toEqual({ values: EDITABLE, minorDigitsLocked: false })
-    insertRow(db, 'expenses', rows.expense(insertMasters(db)))
-    expect(readSettingsView(db)).toEqual({ values: EDITABLE, minorDigitsLocked: true })
+  it('readSettingsView adds whether the currency settings and the starting number are locked', () => {
+    expect(readSettingsView(db)).toEqual({
+      values: EDITABLE,
+      currencyLocked: false,
+      startNumberLocked: false
+    })
+    const m = insertMasters(db)
+    insertRow(db, 'expenses', rows.expense(m))
+    expect(readSettingsView(db)).toEqual({
+      values: EDITABLE,
+      currencyLocked: true,
+      startNumberLocked: false
+    })
+    insertRow(db, 'invoices', rows.invoice(m))
+    expect(readSettingsView(db)).toEqual({
+      values: EDITABLE,
+      currencyLocked: true,
+      startNumberLocked: true
+    })
   })
 
-  it('updateSettingsView saves the change and returns the settings with the lock', () => {
+  it('updateSettingsView saves the change and returns the settings with the locks', () => {
     expect(updateSettingsView(db, { 'currency.symbol': 'PKR' })).toEqual({
       values: { ...EDITABLE, 'currency.symbol': 'PKR' },
-      minorDigitsLocked: false
+      currencyLocked: false,
+      startNumberLocked: false
     })
   })
 })
 
-describe('currency.minorDigits is locked once financial data exists', () => {
-  const LOCKED = {
+describe('the currency code, symbol and decimal places are locked once financial data exists', () => {
+  const MESSAGE = 'Currency settings cannot be changed after financial data has been entered.'
+  const lockedFor = (...keys: string[]): unknown => ({
     code: 'SETTING_LOCKED',
-    message: 'Currency decimal places cannot be changed after financial data has been entered.',
-    fieldErrors: {
-      'currency.minorDigits': [
-        'Currency decimal places cannot be changed after financial data has been entered.'
-      ]
-    }
-  }
+    message: MESSAGE,
+    fieldErrors: Object.fromEntries(keys.map((key) => [key, [MESSAGE]]))
+  })
+  const LOCKED = lockedFor('currency.minorDigits')
 
   /** Master data whose units have no price or cost: not financial data. */
   function pricelessMasters(): Masters {
@@ -374,6 +388,11 @@ describe('currency.minorDigits is locked once financial data exists', () => {
     })
     expect(updateSettings(db, { 'currency.minorDigits': 3 })['currency.minorDigits']).toBe(3)
     expect(stored('currency.minorDigits')).toBe('3')
+    expect(
+      updateEditableSettings(db, { 'currency.code': 'USD', 'currency.symbol': '$' })
+    ).toMatchObject({ 'currency.code': 'USD', 'currency.symbol': '$' })
+    expect(stored('currency.code')).toBe('"USD"')
+    expect(stored('currency.symbol')).toBe('"$"')
   })
 
   it.each<[string, (m: Masters) => void]>([
@@ -415,6 +434,14 @@ describe('currency.minorDigits is locked once financial data exists', () => {
     )
 
     expect(failure.error).toEqual(LOCKED)
+    for (const [key, value] of [
+      ['currency.code', 'USD'],
+      ['currency.symbol', '$']
+    ] as const) {
+      expect(validationFailure(() => updateEditableSettings(db, { [key]: value })).error).toEqual(
+        lockedFor(key)
+      )
+    }
     expect(allRows()).toEqual(before)
   })
 
@@ -426,16 +453,75 @@ describe('currency.minorDigits is locked once financial data exists', () => {
     expect(stored('currency.minorDigits')).toBe('2')
   })
 
-  it('still accepts the current number of decimal places, and a currency code or symbol change', () => {
+  it('still accepts saving the current currency settings unchanged, but not another code or symbol', () => {
     insertRow(db, 'stock_receipts', rows.receipt())
     expect(
       updateEditableSettings(db, {
+        'business.name': 'Ali Traders',
         'currency.minorDigits': 2,
-        'currency.code': 'USD',
-        'currency.symbol': '$'
+        'currency.code': 'PKR',
+        'currency.symbol': 'Rs'
       })
-    ).toMatchObject({ 'currency.minorDigits': 2, 'currency.code': 'USD', 'currency.symbol': '$' })
-    expect(stored('currency.code')).toBe('"USD"')
-    expect(stored('currency.symbol')).toBe('"$"')
+    ).toMatchObject({
+      'business.name': 'Ali Traders',
+      'currency.minorDigits': 2,
+      'currency.code': 'PKR',
+      'currency.symbol': 'Rs'
+    })
+    const before = allRows()
+    expect(
+      validationFailure(() =>
+        updateEditableSettings(db, {
+          'currency.minorDigits': 2,
+          'currency.code': 'USD',
+          'currency.symbol': '$'
+        })
+      ).error
+    ).toEqual(lockedFor('currency.code', 'currency.symbol'))
+    expect(allRows()).toEqual(before)
+    expect(stored('currency.code')).toBe('"PKR"')
+    expect(stored('currency.symbol')).toBe('"Rs"')
+  })
+})
+
+describe('invoice.startNumber is locked once invoice numbering has begun', () => {
+  const MESSAGE = 'Starting number cannot be changed after invoice numbering has begun.'
+  const LOCKED = {
+    code: 'SETTING_LOCKED',
+    message: MESSAGE,
+    fieldErrors: { 'invoice.startNumber': [MESSAGE] }
+  }
+
+  it('may change before the first invoice', () => {
+    expect(readSettingsView(db).startNumberLocked).toBe(false)
+    expect(updateEditableSettings(db, { 'invoice.startNumber': 501 })['invoice.startNumber']).toBe(
+      501
+    )
+    expect(updateSettings(db, { 'invoice.startNumber': 7 })['invoice.startNumber']).toBe(7)
+  })
+
+  it.each<[string, () => void]>([
+    ['an invoice exists', () => insertRow(db, 'invoices', rows.invoice(insertMasters(db)))],
+    [
+      'the invoice number sequence has moved on',
+      () => db.run("UPDATE sequences SET next_value = 4 WHERE name = 'invoice'")
+    ]
+  ])('is refused once %s; saving the same number is still accepted', (_label, begin) => {
+    updateSettings(db, { 'invoice.startNumber': 501 })
+    begin()
+    expect(readSettingsView(db).startNumberLocked).toBe(true)
+    const before = allRows()
+    expect(
+      validationFailure(() =>
+        updateEditableSettings(db, { 'business.name': 'Ali Traders', 'invoice.startNumber': 900 })
+      ).error
+    ).toEqual(LOCKED)
+    expect(validationFailure(() => updateSettings(db, { 'invoice.startNumber': 1 })).error).toEqual(
+      LOCKED
+    )
+    expect(allRows()).toEqual(before)
+    expect(
+      updateEditableSettings(db, { 'invoice.startNumber': 501, 'invoice.prefix': 'SF-' })
+    ).toMatchObject({ 'invoice.startNumber': 501, 'invoice.prefix': 'SF-' })
   })
 })

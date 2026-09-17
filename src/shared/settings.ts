@@ -63,19 +63,39 @@ export type EditableSettingKey = (typeof EDITABLE_SETTING_KEYS)[number]
 export type EditableSettings = Pick<Settings, EditableSettingKey>
 export type EditableSettingsPatch = Partial<EditableSettings>
 
-/** Why `currency.minorDigits` is refused once financial data exists. */
-export const MINOR_DIGITS_LOCKED_MESSAGE =
-  'Currency decimal places cannot be changed after financial data has been entered.'
+/**
+ * The currency identity: code, symbol and decimal places. Amounts are stored as whole minor units and old invoices are
+ * printed with the current currency, so none of them may change once financial data exists.
+ */
+export const CURRENCY_SETTING_KEYS = Object.freeze([
+  'currency.code',
+  'currency.symbol',
+  'currency.minorDigits'
+] as const)
+
+/** Why a currency setting is refused once financial data exists. */
+export const CURRENCY_LOCKED_MESSAGE =
+  'Currency settings cannot be changed after financial data has been entered.'
+
+/** Why `invoice.startNumber` is refused once invoice numbering has begun. */
+export const START_NUMBER_LOCKED_MESSAGE =
+  'Starting number cannot be changed after invoice numbering has begun.'
 
 /** What `window.api.settings.get()` and `.update(...)` return. */
 export interface SettingsView {
   readonly values: EditableSettings
   /**
    * True once any amount is stored (prices, costs, stock documents, invoices, payments, expenses or ledger entries).
-   * Amounts are stored as whole minor units, so changing `currency.minorDigits` would change their meaning: the main
-   * process then refuses it (SETTING_LOCKED), and the Settings screen shows the field read-only.
+   * Amounts are stored as whole minor units and old invoices print with the current currency, so a different currency
+   * code, symbol or decimal places would change their meaning: the main process then refuses them (SETTING_LOCKED), and
+   * the Settings screen shows the three fields read-only.
    */
-  readonly minorDigitsLocked: boolean
+  readonly currencyLocked: boolean
+  /**
+   * True once invoice numbering has begun (an invoice exists or the invoice number sequence has moved on):
+   * `invoice.startNumber` then has no effect, so the main process refuses a different one and the field is read-only.
+   */
+  readonly startNumberLocked: boolean
 }
 
 /** The input of `window.api.settings.update(...)`: any subset of the editable settings. Any other key is refused. */

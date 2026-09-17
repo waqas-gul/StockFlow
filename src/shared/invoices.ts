@@ -342,7 +342,7 @@ export const InvoiceListInputSchema = z
   .strictObject({
     page: wholeNumber(1, 1_000_000),
     pageSize: wholeNumber(1, MAX_INVOICE_PAGE_SIZE),
-    /** Words matched against the invoice number, the customer's code and the saved customer and shop names. */
+    /** Words matched against the invoice number, Invoice Code, the customer's code and the saved customer and shop names. */
     search: z.string().trim().max(100, 'Use at most 100 characters.'),
     status: z.enum(['all', 'POSTED', 'VOID']),
     /** Inclusive invoice date range; null leaves that side open. */

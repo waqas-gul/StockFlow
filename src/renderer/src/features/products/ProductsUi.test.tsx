@@ -85,7 +85,8 @@ const settings: SettingsView = {
     'invoice.startNumber': 1,
     'invoice.paperSize': 'A4'
   },
-  minorDigitsLocked: false
+  currencyLocked: false,
+  startNumberLocked: false
 }
 
 function client(page?: ProductListPage): QueryClient {

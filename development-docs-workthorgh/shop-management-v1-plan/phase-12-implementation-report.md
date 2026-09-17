@@ -29,6 +29,8 @@ Status: implemented and verified. **Nothing committed** (starting point: HEAD `c
 
 ## 3. Installer result
 
+> **Superseded (final audit, 17 Sep 2026).** The Phase 12 installer below is **not** the final V1 installer. It was rebuilt after the Dashboard visual improvement and the final audit fixes: `dist\StockFlow-1.0.0-setup.exe`, 95,250,189 bytes, built 17:00:17, SHA-256 `4524A385A6C13266BD7D74FD75F57CC5C35D6B7C20C5E8F48225687F894B9D67`, v1.0.0, x64, unsigned. See `final-audit-fixes-report.md` §11.
+
 - **Build:** `npm run build:win` → NSIS, x64, `oneClick=false`, `perMachine=true`. Setup exe `95,236,888` bytes (~95 MB); unpacked app 333 MB, 92 files.
   - SHA-256 `EFD4C836ABF3125832B68D0D1E00044844478AAA9CEBB8317F98E4F65FA44244`.
 - **Code signing: not configured. The installer and exe are NOT signed** (Authenticode status `NotSigned`). The build log's "signing with signtool.exe" lines do not sign without a certificate. Expect a SmartScreen warning.
@@ -245,9 +247,9 @@ No performance defect was found and nothing was optimized.
 
 ## 15. Installer / artifact paths
 
-- `D:\waqas\shop-management\dist\StockFlow-1.0.0-setup.exe`: NSIS installer, v1.0.0, x64, 95,236,888 bytes (~95 MB), **unsigned**.
+- **Final V1 installer (rebuilt after the Dashboard improvement and final audit fixes):** `D:\waqas\shop-management\dist\StockFlow-1.0.0-setup.exe`, NSIS, v1.0.0, x64, 95,250,189 bytes, SHA-256 `4524A385…9D67`, **unsigned**. The Phase 12 build of the same file name (95,236,888 bytes) has been replaced. Details: `final-audit-fixes-report.md` §11.
 - `D:\waqas\shop-management\dist\StockFlow-1.0.0-setup.exe.blockmap`: electron-builder by-product (not needed to install).
-- `D:\waqas\shop-management\dist\win-unpacked\StockFlow.exe`: the unpacked app (333 MB, 92 files).
+- `D:\waqas\shop-management\dist\win-unpacked\StockFlow.exe`: the unpacked app (92 files; 349,704,976 bytes in the final build).
 - `D:\waqas\shop-management\dist\builder-debug.yml`: build diagnostics (not part of the installer).
 
 ---

@@ -1,9 +1,11 @@
 import { z } from 'zod'
 import {
+  CURRENCY_LOCKED_MESSAGE,
+  CURRENCY_SETTING_KEYS,
   EDITABLE_SETTING_KEYS,
   EditableSettingsPatchSchema,
-  MINOR_DIGITS_LOCKED_MESSAGE,
   SETTING_SCHEMAS,
+  START_NUMBER_LOCKED_MESSAGE,
   type EditableSettings,
   type SettingKey,
   type Settings,
@@ -18,9 +20,10 @@ import type { Logger } from '../logging'
  * @shared/settings can be read or written through it: there is no generic key/value access. There is no
  * negative-stock setting (plan §8.3). The Settings screen reads and edits the business, currency and invoice settings
  * through `window.api.settings` (readSettingsView, updateSettingsView); the backup keys are not exposed: automatic
- * backups keep the fixed V1 policy. currency.minorDigits is locked once financial data exists (hasMonetaryData). The
- * business effect of a change, such as applying invoice.startNumber to the invoice sequence, belongs to the phase that
- * uses the setting.
+ * backups keep the fixed V1 policy. The currency code, symbol and decimal places are locked once financial data exists
+ * (hasMonetaryData), and invoice.startNumber once invoice numbering has begun (invoiceNumberingStarted). The business
+ * effect of a change, such as applying invoice.startNumber to the invoice sequence, belongs to the phase that uses the
+ * setting.
  */
 
 export { SETTING_SCHEMAS, type SettingKey, type Settings } from '@shared/settings'
@@ -111,26 +114,45 @@ export function hasMonetaryData(db: Db): boolean {
 }
 
 /**
+ * True once invoice numbering has begun: an invoice exists, or the invoice number sequence has moved on. From then on
+ * invoice.startNumber has no effect (invoices.service applies it only before the first number is used).
+ */
+export function invoiceNumberingStarted(db: Db): boolean {
+  const row = db.get<{ started: number }>(
+    `SELECT EXISTS (SELECT 1 FROM invoices)
+       OR coalesce((SELECT next_value FROM sequences WHERE name = 'invoice'), 1) <> 1 AS started`
+  )
+  return row?.started === 1
+}
+
+/**
  * Validates `patch` and writes it in one transaction: every setting in it is saved, or none is. Invalid input
- * (including an unknown key) is refused with a VALIDATION failure and changes nothing. A different
- * `currency.minorDigits` once financial data exists (hasMonetaryData) is refused with SETTING_LOCKED and changes
- * nothing either. Returns every setting.
+ * (including an unknown key) is refused with a VALIDATION failure and changes nothing. A different currency code,
+ * symbol or decimal places once financial data exists (hasMonetaryData), or a different invoice.startNumber once
+ * invoice numbering has begun, is refused with SETTING_LOCKED and changes nothing either; the same values are accepted.
+ * Returns every setting.
  */
 export function updateSettings(db: Db, patch: unknown): Settings {
   const parsed = SettingsPatchSchema.safeParse(patch)
   if (!parsed.success) throw invalidSettings(parsed.error)
   const changes = Object.entries(parsed.data).filter(([, value]) => value !== undefined)
-  const minorDigits = parsed.data['currency.minorDigits']
   db.transaction(() => {
-    if (
-      minorDigits !== undefined &&
-      minorDigits !== readSettings(db)['currency.minorDigits'] &&
-      hasMonetaryData(db)
-    ) {
+    const current = readSettings(db)
+    const changed = (key: SettingKey): boolean =>
+      parsed.data[key] !== undefined && parsed.data[key] !== current[key]
+    const currency = CURRENCY_SETTING_KEYS.filter(changed)
+    if (currency.length > 0 && hasMonetaryData(db)) {
       throw new AppFailure({
         code: 'SETTING_LOCKED',
-        message: MINOR_DIGITS_LOCKED_MESSAGE,
-        fieldErrors: { 'currency.minorDigits': [MINOR_DIGITS_LOCKED_MESSAGE] }
+        message: CURRENCY_LOCKED_MESSAGE,
+        fieldErrors: Object.fromEntries(currency.map((key) => [key, [CURRENCY_LOCKED_MESSAGE]]))
+      })
+    }
+    if (changed('invoice.startNumber') && invoiceNumberingStarted(db)) {
+      throw new AppFailure({
+        code: 'SETTING_LOCKED',
+        message: START_NUMBER_LOCKED_MESSAGE,
+        fieldErrors: { 'invoice.startNumber': [START_NUMBER_LOCKED_MESSAGE] }
       })
     }
     for (const [key, value] of changes) {
@@ -160,14 +182,18 @@ export function updateEditableSettings(db: Db, patch: unknown): EditableSettings
   return editableOf(updateSettings(db, parsed.data))
 }
 
-/** `settings.get()`: the editable settings, and whether the currency decimal places are locked. */
+/** `settings.get()`: the editable settings, and whether the currency and the starting number are locked. */
 export function readSettingsView(db: Db, log?: Pick<Logger, 'warn'>): SettingsView {
-  return { values: readEditableSettings(db, log), minorDigitsLocked: hasMonetaryData(db) }
+  return { values: readEditableSettings(db, log), ...locks(db) }
 }
 
-/** `settings.update(...)`: updateEditableSettings, then the settings with the lock as they are now. */
+/** `settings.update(...)`: updateEditableSettings, then the settings with the locks as they are now. */
 export function updateSettingsView(db: Db, patch: unknown): SettingsView {
-  return { values: updateEditableSettings(db, patch), minorDigitsLocked: hasMonetaryData(db) }
+  return { values: updateEditableSettings(db, patch), ...locks(db) }
+}
+
+function locks(db: Db): Pick<SettingsView, 'currencyLocked' | 'startNumberLocked'> {
+  return { currencyLocked: hasMonetaryData(db), startNumberLocked: invoiceNumberingStarted(db) }
 }
 
 function invalidSettings(error: z.ZodError): AppFailure {

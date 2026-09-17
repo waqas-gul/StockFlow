@@ -220,7 +220,7 @@ export function ExpenseBreakdownPanel({
   const segments = donutSegments(breakdown)
   const money = (minor: number): string => moneyText(minor, currency)
   return (
-    <DashboardPanel title="Expenses This Month">
+    <DashboardPanel title="Operating Expenses This Month">
       {segments.length === 0 ? (
         <PanelEmpty icon={Wallet}>No expenses recorded this month.</PanelEmpty>
       ) : (

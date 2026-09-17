@@ -229,9 +229,9 @@ function SummaryCards({
       title: 'Current stock at average cost, as in Reports → Stock.'
     },
     {
-      label: 'Low Stock',
+      label: 'Stock Alerts',
       value: countText(lowStock, 'Product'),
-      note: lowStock > 0 ? 'Needs attention' : 'Nothing below its low-stock level',
+      note: 'Low or out of stock',
       icon: TriangleAlert,
       title: 'Active products at or below their low-stock level.',
       attention: lowStock > 0

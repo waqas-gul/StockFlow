@@ -397,18 +397,26 @@ describe('readPrintableInvoice', () => {
     })
   })
 
-  it('uses the current business name, currency symbol and paper size for presentation only', () => {
+  it('uses the current business name and paper size for presentation only; the currency can no longer change', () => {
     const invoice = postFullInvoice()
     const printed = readPrintableInvoice(db, invoice.id)
-    updateSettings(db, {
-      'business.name': 'Madina Traders',
-      'currency.symbol': 'PKR',
-      'invoice.paperSize': 'A5'
-    })
+    expect(printed.currency).toEqual({ code: 'PKR', symbol: 'Rs', minorDigits: 2 })
+    updateSettings(db, { 'business.name': 'Madina Traders', 'invoice.paperSize': 'A5' })
+    // An old invoice must never reprint as another currency: once amounts exist, the currency is locked.
+    for (const patch of [
+      { 'currency.code': 'USD' },
+      { 'currency.symbol': '$' },
+      { 'currency.minorDigits': 3 },
+      { 'currency.code': 'USD', 'currency.symbol': '$' }
+    ]) {
+      expect(thrown(() => updateSettings(db, patch))).toMatchObject({
+        error: { code: 'SETTING_LOCKED' }
+      })
+    }
     expect(readPrintableInvoice(db, invoice.id)).toEqual({
       ...printed,
       businessName: 'Madina Traders',
-      currency: { code: 'PKR', symbol: 'PKR', minorDigits: 2 },
+      currency: { code: 'PKR', symbol: 'Rs', minorDigits: 2 },
       paperSize: 'A5'
     })
   })

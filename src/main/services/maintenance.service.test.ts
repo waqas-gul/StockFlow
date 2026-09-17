@@ -22,7 +22,15 @@ const TITLES: ReadonlyArray<readonly [id: string, title: string]> = [
   ['schema.history', 'Database structure'],
   ['inventory.stock', 'Stock quantities and values'],
   ['ledger.entries', 'Customer ledger'],
-  ['ledger.balances', 'Customer balances']
+  ['ledger.balances', 'Customer balances'],
+  ['invoices.totals', 'Invoice lines and totals'],
+  ['invoices.stock', 'Invoice stock'],
+  ['invoices.accounts', 'Invoice customer accounts'],
+  ['payments.ledger', 'Payments'],
+  ['customers.walk-in', 'Walk-in customer'],
+  ['receipts.stock', 'Stock receipts'],
+  ['adjustments.stock', 'Stock adjustments'],
+  ['dates.future', 'Business dates']
 ]
 
 /** What must never reach the screen: SQL, pragmas, internal tables and views, checksums, row ids. */

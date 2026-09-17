@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { win32 } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ipcCalls } from '@shared/ipc-contract'
-import { MINOR_DIGITS_LOCKED_MESSAGE } from '@shared/settings'
+import { CURRENCY_LOCKED_MESSAGE } from '@shared/settings'
 import type { Result } from '@shared/types/result'
 import { backupFolder } from '../data-paths'
 import {
@@ -138,10 +138,10 @@ describe('registerIpc', () => {
 })
 
 describe('settings', () => {
-  it('settings:get returns the business, currency and invoice settings only, and the decimal places lock', async () => {
+  it('settings:get returns the business, currency and invoice settings only, and their locks', async () => {
     await expect(call('settings:get')).resolves.toEqual({
       ok: true,
-      data: { values: EDITABLE_DEFAULTS, minorDigitsLocked: false }
+      data: { values: EDITABLE_DEFAULTS, currencyLocked: false, startNumberLocked: false }
     })
   })
 
@@ -154,38 +154,49 @@ describe('settings', () => {
       ok: true,
       data: {
         values: { ...EDITABLE_DEFAULTS, 'business.name': 'Ali Traders', 'invoice.paperSize': 'A5' },
-        minorDigitsLocked: false
+        currencyLocked: false,
+        startNumberLocked: false
       }
     })
     expect(readSettings(fixture.db)['business.name']).toBe('Ali Traders')
   })
 
-  it('settings:update refuses other decimal places once financial data exists, but not a symbol or code', async () => {
+  it('settings:update refuses another currency code, symbol or decimal places once financial data exists', async () => {
     insertRow(fixture.db, 'expenses', rows.expense(insertMasters(fixture.db)))
     await expect(call('settings:get')).resolves.toMatchObject({
       ok: true,
-      data: { minorDigitsLocked: true }
+      data: { currencyLocked: true, startNumberLocked: false }
     })
 
     await expect(call('settings:update', { 'currency.minorDigits': 0 })).resolves.toEqual({
       ok: false,
       error: {
         code: 'SETTING_LOCKED',
-        message: MINOR_DIGITS_LOCKED_MESSAGE,
-        fieldErrors: { 'currency.minorDigits': [MINOR_DIGITS_LOCKED_MESSAGE] }
+        message: CURRENCY_LOCKED_MESSAGE,
+        fieldErrors: { 'currency.minorDigits': [CURRENCY_LOCKED_MESSAGE] }
       }
     })
-    expect(readSettings(fixture.db)['currency.minorDigits']).toBe(2)
-
     await expect(
       call('settings:update', { 'currency.code': 'USD', 'currency.symbol': '$' })
     ).resolves.toEqual({
-      ok: true,
-      data: {
-        values: { ...EDITABLE_DEFAULTS, 'currency.code': 'USD', 'currency.symbol': '$' },
-        minorDigitsLocked: true
+      ok: false,
+      error: {
+        code: 'SETTING_LOCKED',
+        message: CURRENCY_LOCKED_MESSAGE,
+        fieldErrors: {
+          'currency.code': [CURRENCY_LOCKED_MESSAGE],
+          'currency.symbol': [CURRENCY_LOCKED_MESSAGE]
+        }
       }
     })
+    expect(readSettings(fixture.db)).toMatchObject({
+      'currency.code': 'PKR',
+      'currency.symbol': 'Rs',
+      'currency.minorDigits': 2
+    })
+    await expect(
+      call('settings:update', { 'currency.code': 'PKR', 'currency.symbol': 'Rs' })
+    ).resolves.toMatchObject({ ok: true, data: { currencyLocked: true } })
   })
 
   it.each<[string, unknown, string]>([
@@ -304,7 +315,7 @@ describe('companies and products', () => {
     // A configured price locks the currency decimal places (Phase 4C).
     await expect(call('settings:get')).resolves.toMatchObject({
       ok: true,
-      data: { minorDigitsLocked: true }
+      data: { currencyLocked: true }
     })
   })
 
@@ -1297,7 +1308,7 @@ describe('expenses', () => {
     // The first expense locks the currency decimal places.
     await expect(call('settings:get')).resolves.toMatchObject({
       ok: true,
-      data: { minorDigitsLocked: true }
+      data: { currencyLocked: true }
     })
   })
 

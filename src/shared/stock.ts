@@ -48,10 +48,14 @@ export type AdjustmentDirection = 'IN' | 'OUT' | 'VALUE'
 
 /**
  * How the Profit & Loss report (Phase 11) treats an adjustment (plan §8.6, §13): OPERATING_LOSS / OPERATING_GAIN count
- * in Net Operating Profit; INVENTORY_DATA_CORRECTION is shown below it, under Data Corrections; NONE is not P&L.
+ * in Net Operating Profit; INVENTORY_DATA_CORRECTION is shown below it, under Data Corrections, and counts in Profit After
+ * Data Corrections; DISCLOSURE_ONLY is shown for information and counts in no profit figure; NONE is not P&L.
+ *
+ * A receipt cost correction is DISCLOSURE_ONLY: it changes the inventory value, so it reaches profit through the COGS of
+ * later sales (historical COGS stays frozen). Counting it in the period's profit as well would count it twice.
  */
 export type StockPnlTreatment =
-  'NONE' | 'OPERATING_LOSS' | 'OPERATING_GAIN' | 'INVENTORY_DATA_CORRECTION'
+  'NONE' | 'OPERATING_LOSS' | 'OPERATING_GAIN' | 'INVENTORY_DATA_CORRECTION' | 'DISCLOSURE_ONLY'
 
 export interface AdjustmentReasonInfo {
   readonly label: string
@@ -104,7 +108,7 @@ export const ADJUSTMENT_REASON_INFO: Readonly<Record<AdjustmentReason, Adjustmen
       label: 'Receipt Cost Correction',
       description: 'A saved receipt recorded the wrong unit cost.',
       directions: ['VALUE'],
-      pnl: 'INVENTORY_DATA_CORRECTION'
+      pnl: 'DISCLOSURE_ONLY'
     },
     OTHER_CORRECTION: {
       label: 'Other Correction',

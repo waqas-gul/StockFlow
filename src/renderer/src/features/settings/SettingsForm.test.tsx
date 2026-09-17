@@ -16,10 +16,18 @@ const SETTINGS: EditableSettings = {
 }
 
 /** Server-renders the form: no effects run and window.api is never called. */
-function render(settings: EditableSettings = SETTINGS, minorDigitsLocked = false): string {
+function render(
+  settings: EditableSettings = SETTINGS,
+  currencyLocked = false,
+  startNumberLocked = false
+): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
-      <SettingsForm settings={settings} minorDigitsLocked={minorDigitsLocked} />
+      <SettingsForm
+        settings={settings}
+        currencyLocked={currencyLocked}
+        startNumberLocked={startNumberLocked}
+      />
     </QueryClientProvider>
   )
 }
@@ -68,20 +76,35 @@ describe('SettingsForm', () => {
     expect(html).toMatch(/aria-checked="false"[^>]*value="A4"|value="A4"[^>]*aria-checked="false"/)
   })
 
-  it('lets the decimal places be edited while no financial data exists', () => {
+  it('lets the currency and the starting number be edited while nothing locks them', () => {
     const html = render()
-    expect(inputTag(html, 'minorDigits')).not.toMatch(/readonly/i)
-    expect(text(html)).not.toContain('Locked')
+    for (const id of ['currencyCode', 'currencySymbol', 'minorDigits', 'invoiceStartNumber']) {
+      expect(inputTag(html, id)).not.toMatch(/readonly/i)
+    }
+    expect(text(html)).not.toMatch(/Locked|cannot be changed/)
   })
 
-  it('shows the decimal places read-only with the reason once financial data exists; code and symbol stay editable', () => {
+  it('shows the currency code, symbol and decimal places read-only with the reason once financial data exists', () => {
     const html = render(SETTINGS, true)
-    expect(inputTag(html, 'minorDigits')).toMatch(/readonly=""/i)
-    expect(inputTag(html, 'minorDigits')).toMatch(/aria-readonly="true"/)
+    for (const id of ['currencyCode', 'currencySymbol', 'minorDigits']) {
+      expect(inputTag(html, id)).toMatch(/readonly=""/i)
+      expect(inputTag(html, id)).toMatch(/aria-readonly="true"/)
+    }
     expect(text(html)).toContain(
-      'Locked: decimal places cannot change after financial data has been entered.'
+      'Currency settings cannot be changed after financial data has been entered.'
     )
-    for (const id of ['currencyCode', 'currencySymbol']) {
+    expect(inputTag(html, 'invoiceStartNumber')).not.toMatch(/readonly/i)
+  })
+
+  it('shows the starting number read-only with the reason once invoice numbering has begun', () => {
+    const html = render(SETTINGS, true, true)
+    expect(inputTag(html, 'invoiceStartNumber')).toMatch(/readonly=""/i)
+    expect(inputTag(html, 'invoiceStartNumber')).toMatch(/aria-readonly="true"/)
+    expect(text(html)).toContain(
+      'Starting number cannot be changed after invoice numbering has begun.'
+    )
+    expect(text(html)).not.toContain('First invoice number')
+    for (const id of ['invoicePrefix', 'invoicePadding']) {
       expect(inputTag(html, id)).not.toMatch(/readonly/i)
     }
   })
