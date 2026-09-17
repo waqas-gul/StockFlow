@@ -43,6 +43,9 @@ const saved: PaymentSaveResult = {
   voidReason: null,
   voidDate: null,
   voidedAt: null,
+  invoiceId: null,
+  invoiceNo: null,
+  invoiceStatus: null,
   balanceAfterMinor: -50000,
   replayed: false
 }

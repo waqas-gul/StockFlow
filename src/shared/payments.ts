@@ -112,6 +112,10 @@ export interface PaymentSummary {
 export interface PaymentDetail extends PaymentSummary {
   readonly customerActive: boolean
   readonly note: string | null
+  /** The invoice the money was received with (a counter payment), and that invoice's current status. */
+  readonly invoiceId: number | null
+  readonly invoiceNo: string | null
+  readonly invoiceStatus: 'POSTED' | 'VOID' | null
   readonly voidReason: string | null
   readonly voidDate: string | null
   readonly voidedAt: string | null

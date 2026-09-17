@@ -410,6 +410,40 @@ describe('the walk-in customer', () => {
       isActive: true
     })
   })
+
+  it('refuses a balance adjustment in either direction, and writes nothing', () => {
+    const customer = walkIn()
+    for (const direction of ['INCREASE', 'DECREASE'] as const) {
+      const error = failure(() =>
+        adjustCustomerBalance(db, adjustmentInput(customer.id, { direction }), NOW)
+      )
+      expect(error).toEqual({
+        code: 'FORBIDDEN_STATE',
+        message:
+          'C-00001 Cash / Walk-in is the walk-in customer, so its balance cannot be adjusted. Cash sales are paid in full on the invoice.',
+        fieldErrors: { customerId: ['The walk-in customer balance cannot be adjusted.'] }
+      })
+    }
+    expect(ledger(customer.id)).toEqual([])
+    expect(walkIn().balanceMinor).toBe(0)
+  })
+
+  it('leaves existing ledger rows of an older walk-in account untouched', () => {
+    const customer = walkIn()
+    db.transaction(() =>
+      db.run(
+        `INSERT INTO customer_ledger (customer_id, entry_date, type, amount_minor, note)
+         VALUES (?, '2026-09-01', 'ADJUSTMENT', 500, 'Older version')`,
+        [customer.id]
+      )
+    )
+    expect(failure(() => adjustCustomerBalance(db, adjustmentInput(customer.id), NOW)).code).toBe(
+      'FORBIDDEN_STATE'
+    )
+    expect(ledger(customer.id).map((row) => [row.type, row.amount_minor])).toEqual([
+      ['ADJUSTMENT', 500]
+    ])
+  })
 })
 
 describe('listCustomers and searchCustomers', () => {

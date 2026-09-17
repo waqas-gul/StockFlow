@@ -1,7 +1,7 @@
 import { Boxes } from 'lucide-react'
-import { NavLink } from 'react-router'
+import { NavLink, useLocation } from 'react-router'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
-import { mainNavSections, settingsNavItem, type NavItem } from '../navigation'
+import { findNavItem, mainNavSections, settingsNavItem, type NavItem } from '../navigation'
 
 // Full width from the lg breakpoint (1024px); an icon rail with tooltips below it.
 // Header and Settings stay fixed; only the navigation list scrolls when the window is too short.
@@ -59,10 +59,13 @@ const linkClassName = [
 
 function SidebarLink({ item }: { item: NavItem }): React.JSX.Element {
   const Icon = item.icon
+  const { pathname } = useLocation()
+  // A section owns the pages below its path, except those that are sections themselves (/invoices/new).
+  const ownsPage = item.matchChildren === true && (findNavItem(pathname) ?? item) === item
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <NavLink to={item.path} end={!item.matchChildren} className={linkClassName}>
+        <NavLink to={item.path} end={!ownsPage} className={linkClassName}>
           <Icon className="size-4 shrink-0" aria-hidden />
           <span className="hidden truncate lg:inline">{item.label}</span>
         </NavLink>

@@ -10,7 +10,14 @@ import {
   CustomerSearchInputSchema,
   CustomerUpdateSchema
 } from '@shared/customers'
-import { InvoiceContextInputSchema, InvoiceCreateSchema } from '@shared/invoices'
+import {
+  InvoiceContextInputSchema,
+  InvoiceCreateSchema,
+  InvoiceDispatchUpdateSchema,
+  InvoiceIdSchema,
+  InvoiceListInputSchema,
+  InvoiceVoidInputSchema
+} from '@shared/invoices'
 import {
   PaymentCreateSchema,
   PaymentDuplicateCheckSchema,
@@ -57,7 +64,14 @@ import {
   setCustomerActive,
   updateCustomer
 } from '../services/customers.service'
-import { createInvoice, invoiceContext } from '../services/invoices.service'
+import { voidInvoice } from '../services/invoice-void.service'
+import {
+  createInvoice,
+  getInvoice,
+  invoiceContext,
+  listInvoices,
+  updateInvoiceDispatch
+} from '../services/invoices.service'
 import type { LiveDatabase } from '../services/live-database'
 import { integrityCheckReport } from '../services/maintenance.service'
 import {
@@ -245,6 +259,16 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       post: {
         input: InvoiceCreateSchema,
         run: (input) => createInvoice(database.get(), input, ctx.now())
+      },
+      list: { input: InvoiceListInputSchema, run: (input) => listInvoices(database.get(), input) },
+      get: { input: InvoiceIdSchema, run: (id) => getInvoice(database.get(), id) },
+      updateDispatch: {
+        input: InvoiceDispatchUpdateSchema,
+        run: (input) => updateInvoiceDispatch(database.get(), input, ctx.now())
+      },
+      void: {
+        input: InvoiceVoidInputSchema,
+        run: (input) => voidInvoice(database.get(), input, ctx.now())
       }
     }
   }

@@ -50,9 +50,10 @@ export const mainNavSections: NavSection[] = [
       },
       {
         path: '/invoices',
-        label: 'Invoices',
+        label: 'Invoice History',
         icon: ReceiptText,
-        placeholder: 'Invoice history will be implemented in a later phase.'
+        placeholder: 'Invoice history will be implemented in a later phase.',
+        matchChildren: true
       }
     ]
   },

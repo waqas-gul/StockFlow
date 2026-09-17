@@ -6,6 +6,7 @@ import { Input } from '@renderer/components/ui/input'
 import { customerSearchQuery } from '@renderer/lib/app-queries'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
 import { cn } from '@renderer/lib/utils'
+import { pickableCustomers } from './customer-display'
 
 export interface CustomerPickerProps {
   /** The chosen customer's label, or '' when none is chosen. */
@@ -15,6 +16,8 @@ export interface CustomerPickerProps {
   readonly invalid?: boolean
   readonly disabled?: boolean
   readonly id?: string
+  /** Leaves out the walk-in customer (C-00001), e.g. for a payment: its account stays at zero. */
+  readonly excludeWalkIn?: boolean
 }
 
 /**
@@ -27,7 +30,8 @@ export function CustomerPicker({
   ariaLabel,
   invalid,
   disabled,
-  id
+  id,
+  excludeWalkIn = false
 }: CustomerPickerProps): React.JSX.Element {
   const listId = useId()
   const [text, setText] = useState<string | null>(null)
@@ -38,7 +42,10 @@ export function CustomerPicker({
     ...customerSearchQuery({ query, limit: 10, includeInactive: false }),
     enabled: editing && query !== ''
   })
-  const items = editing && query !== '' ? (results.data ?? []) : []
+  const items = pickableCustomers(
+    editing && query !== '' ? (results.data ?? []) : [],
+    excludeWalkIn
+  )
 
   const pick = (item: CustomerListItem | undefined): void => {
     if (item === undefined) return

@@ -20,7 +20,14 @@ import type {
   InvoiceContext,
   InvoiceContextInput,
   InvoiceCreateInput,
-  InvoiceSaveResult
+  InvoiceDetail,
+  InvoiceDispatchResult,
+  InvoiceDispatchUpdateInput,
+  InvoiceListInput,
+  InvoiceSaveResult,
+  InvoiceSummary,
+  InvoiceVoidInput,
+  InvoiceVoidResult
 } from './invoices'
 import type {
   DuplicatePaymentCheck,
@@ -197,7 +204,15 @@ export const ipcContract = Object.freeze({
      * Posts an invoice with its stock movements, ledger entries and counter payment, in one transaction (a repeated
      * request id returns the saved invoice).
      */
-    post: call<InvoiceCreateInput, InvoiceSaveResult>()
+    post: call<InvoiceCreateInput, InvoiceSaveResult>(),
+    /** Invoice History: newest first, with search, date range and status filters. */
+    list: call<InvoiceListInput, ListPage<InvoiceSummary>>(),
+    /** One invoice exactly as saved, with its counter payment's status and dispatch change log. */
+    get: call<number, InvoiceDetail>(),
+    /** Changes the dispatch details (Bilty No, Transport, Adda) of a posted invoice, logging each change. */
+    updateDispatch: call<InvoiceDispatchUpdateInput, InvoiceDispatchResult>(),
+    /** Voids a posted invoice, dated today: exact stock and account reversals in one transaction. */
+    void: call<InvoiceVoidInput, InvoiceVoidResult>()
   })
 })
 

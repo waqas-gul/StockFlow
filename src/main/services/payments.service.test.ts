@@ -130,6 +130,9 @@ describe('createPayment', () => {
       voidReason: null,
       voidDate: null,
       voidedAt: null,
+      invoiceId: null,
+      invoiceNo: null,
+      invoiceStatus: null,
       createdAt: expect.any(String),
       balanceAfterMinor: 60000,
       replayed: false
@@ -254,6 +257,48 @@ describe('createPayment', () => {
 
   it('refuses amounts entered with other currency decimal places', () => {
     expect(failure(() => pay({ currencyMinorDigits: 3 })).code).toBe('CONFLICT')
+  })
+})
+
+describe('the walk-in customer', () => {
+  function walkInId(): number {
+    return db.get<{ id: number }>("SELECT id FROM customers WHERE code = 'C-00001'")!.id
+  }
+
+  it('cannot receive a separate payment: nothing is saved and no number is used', () => {
+    const error = failure(() => pay({ customerId: walkInId() }))
+    expect(error).toEqual({
+      code: 'FORBIDDEN_STATE',
+      message:
+        'C-00001 Cash / Walk-in is the walk-in customer, so it cannot receive a separate payment. Cash sales are paid in full on the invoice.',
+      fieldErrors: { customerId: ['The walk-in customer cannot receive a separate payment.'] }
+    })
+    expect([count('payments'), balance(walkInId()), nextSequence('payment')]).toEqual([0, 0, 1])
+  })
+
+  it('an older standalone walk-in payment can still be voided', () => {
+    const id = walkInId()
+    const old = db.transaction(() =>
+      Number(
+        db.run(
+          `INSERT INTO payments (payment_no, request_id, customer_id, payment_date, amount_minor, method)
+           VALUES ('RCP-000009', 'older-walk-in-payment', ?, '2026-09-01', 500, 'CASH')`,
+          [id]
+        ).lastInsertRowid
+      )
+    )
+    db.transaction(() =>
+      db.run(
+        `INSERT INTO customer_ledger (customer_id, entry_date, type, amount_minor, payment_id)
+         VALUES (?, '2026-09-01', 'PAYMENT', -500, ?)`,
+        [id, old]
+      )
+    )
+    expect(voidPayment(db, { id: old, reason: 'Cleanup' }, NOW)).toMatchObject({
+      status: 'VOID',
+      invoiceId: null,
+      balanceAfterMinor: 0
+    })
   })
 })
 

@@ -1,4 +1,4 @@
-import type { ListPage } from '@shared/customers'
+import { isWalkInCustomer, type ListPage } from '@shared/customers'
 import { localDateString } from '@shared/dates'
 import {
   PAYMENT_NUMBER_PREFIX,
@@ -37,6 +37,8 @@ import { assertCurrencyDigits } from './settings.service'
  * - A saved payment is never edited. A void, dated today, sets POSTED → VOID with its reason and appends a PAYMENT_VOID
  *   entry of +amount, in one transaction; the PAYMENT entry is never changed. Voids work for inactive customers too.
  * - The same customer, date and amount as a posted payment is only a warning (checkDuplicatePayment), never a rule.
+ * - The walk-in customer (C-00001) keeps a zero account: it receives no separate payment, and the payment received with
+ *   one of its posted invoices is voided only together with that invoice (invoice void, "money returned").
  */
 
 const MAX_SEARCH_WORDS = 8
@@ -59,14 +61,19 @@ interface PaymentRow {
   void_date: string | null
   voided_at: string | null
   created_at: string
+  invoice_id: number | null
+  invoice_no: string | null
+  invoice_status: PaymentStatus | null
 }
 
 const SELECT_PAYMENTS = `
   SELECT p.id, p.payment_no, p.payment_date, p.customer_id, c.code AS customer_code, c.name AS customer_name,
          c.shop_name, c.is_active AS customer_active, p.amount_minor, p.method, p.reference, p.note, p.status,
-         p.void_reason, p.void_date, p.voided_at, p.created_at
+         p.void_reason, p.void_date, p.voided_at, p.created_at, p.invoice_id, i.invoice_no,
+         i.status AS invoice_status
   FROM payments AS p
-  JOIN customers AS c ON c.id = p.customer_id`
+  JOIN customers AS c ON c.id = p.customer_id
+  LEFT JOIN invoices AS i ON i.id = p.invoice_id`
 
 /** Posts a payment receipt and its PAYMENT ledger entry. A repeated request id returns the payment already saved. */
 export function createPayment(db: Db, input: unknown, now: Date): PaymentSaveResult {
@@ -79,6 +86,13 @@ export function createPayment(db: Db, input: unknown, now: Date): PaymentSaveRes
 
     assertCurrencyDigits(db, payment.currencyMinorDigits)
     const customer = customerRow(db, payment.customerId, 'customerId')
+    if (isWalkInCustomer(customer.code)) {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: `${customer.code} ${customer.name} is the walk-in customer, so it cannot receive a separate payment. Cash sales are paid in full on the invoice.`,
+        fieldErrors: { customerId: ['The walk-in customer cannot receive a separate payment.'] }
+      })
+    }
     if (customer.is_active === 0) {
       throw new AppFailure({
         code: 'FORBIDDEN_STATE',
@@ -220,22 +234,51 @@ export function voidPayment(db: Db, input: unknown, now: Date): PaymentVoidResul
         message: `Payment ${payment.payment_no} is already void.`
       })
     }
-    const today = localDateString(now)
     const customer = customerRow(db, payment.customer_id)
+    if (
+      isWalkInCustomer(customer.code) &&
+      payment.invoice_id !== null &&
+      payment.invoice_status === 'POSTED'
+    ) {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: `Payment ${payment.payment_no} was received with walk-in invoice ${payment.invoice_no}. Void the invoice instead: that returns the payment too and keeps the walk-in account at zero.`
+      })
+    }
+    const today = localDateString(now)
     assertCustomerPostingDate(db, { date: today, today, customer })
-    db.run(
-      "UPDATE payments SET status = 'VOID', void_reason = ?, voided_at = ?, void_date = ? WHERE id = ?",
-      [reason, now.toISOString(), today, id]
+    writePaymentVoid(
+      db,
+      { id, customerId: customer.id, amountMinor: payment.amount_minor },
+      reason,
+      now
     )
-    appendLedgerEntry(db, {
-      customerId: customer.id,
-      date: today,
-      type: 'PAYMENT_VOID',
-      amountMinor: payment.amount_minor,
-      paymentId: id,
-      note: reason
-    })
     return { ...readPayment(db, id), balanceAfterMinor: customerBalance(db, customer.id) }
+  })
+}
+
+/**
+ * Voids a posted payment: POSTED → VOID with the reason, dated today, and a PAYMENT_VOID entry of +amount. Runs inside
+ * the caller's transaction, after the caller has checked the payment is posted and the posting date.
+ */
+export function writePaymentVoid(
+  db: Db,
+  payment: { readonly id: number; readonly customerId: number; readonly amountMinor: number },
+  reason: string,
+  now: Date
+): void {
+  const today = localDateString(now)
+  db.run(
+    "UPDATE payments SET status = 'VOID', void_reason = ?, voided_at = ?, void_date = ? WHERE id = ?",
+    [reason, now.toISOString(), today, payment.id]
+  )
+  appendLedgerEntry(db, {
+    customerId: payment.customerId,
+    date: today,
+    type: 'PAYMENT_VOID',
+    amountMinor: payment.amountMinor,
+    paymentId: payment.id,
+    note: reason
   })
 }
 
@@ -250,6 +293,9 @@ function readPayment(db: Db, id: number): PaymentDetail {
     ...toSummary(row),
     customerActive: row.customer_active === 1,
     note: row.note,
+    invoiceId: row.invoice_id,
+    invoiceNo: row.invoice_no,
+    invoiceStatus: row.invoice_status,
     voidReason: row.void_reason,
     voidDate: row.void_date,
     voidedAt: row.voided_at

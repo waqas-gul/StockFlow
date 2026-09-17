@@ -229,6 +229,7 @@ export function CustomerDetailView({
   onToggleActive,
   onOpenPayment
 }: CustomerDetailViewProps): React.JSX.Element {
+  const walkIn = isWalkInCustomer(customer.code)
   const profile: Array<[string, string | null]> = [
     ['Shop', customer.shopName],
     ['Phone', customer.phone],
@@ -272,24 +273,31 @@ export function CustomerDetailView({
           </div>
         </CardContent>
         <CardContent className="flex flex-wrap gap-2 border-t px-5 pt-4">
-          <Button
-            onClick={onReceivePayment}
-            disabled={!customer.isActive}
-            title={customer.isActive ? undefined : 'Reactivate the customer to receive a payment.'}
-          >
-            <HandCoins aria-hidden />
-            Receive Payment
-          </Button>
-          <Button variant="outline" onClick={onAdjustBalance}>
-            <Scale aria-hidden />
-            Adjust Balance
-          </Button>
+          {/* The walk-in account stays at zero: counter sales are paid in full on the invoice. */}
+          {!walkIn && (
+            <>
+              <Button
+                onClick={onReceivePayment}
+                disabled={!customer.isActive}
+                title={
+                  customer.isActive ? undefined : 'Reactivate the customer to receive a payment.'
+                }
+              >
+                <HandCoins aria-hidden />
+                Receive Payment
+              </Button>
+              <Button variant="outline" onClick={onAdjustBalance}>
+                <Scale aria-hidden />
+                Adjust Balance
+              </Button>
+            </>
+          )}
           <Button variant="outline" onClick={onEdit}>
             <Pencil aria-hidden />
             Edit Customer
           </Button>
           {/* The walk-in customer is always active; an old inactive one can still be reactivated. */}
-          {!(isWalkInCustomer(customer.code) && customer.isActive) && (
+          {!(walkIn && customer.isActive) && (
             <Button variant="ghost" onClick={onToggleActive} disabled={busy}>
               {customer.isActive ? <PowerOff aria-hidden /> : <Power aria-hidden />}
               {customer.isActive ? 'Deactivate' : 'Reactivate'}
@@ -297,6 +305,17 @@ export function CustomerDetailView({
           )}
         </CardContent>
       </Card>
+
+      {walkIn && (
+        <Alert>
+          <Info aria-hidden />
+          <AlertDescription>
+            Cash / Walk-in is for counter sales paid in full, so its account stays at zero: it takes
+            no separate payments or balance adjustments. To cancel a walk-in sale, void its invoice
+            and return the money.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {!customer.isActive && (
         <Alert>
@@ -387,6 +406,13 @@ function CustomerLedgerTable({
                     >
                       {reference}
                     </Button>
+                  ) : row.invoiceId !== null ? (
+                    <Link
+                      to={`/invoices/${row.invoiceId}`}
+                      className="font-mono text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      {reference}
+                    </Link>
                   ) : (
                     <span className="font-mono text-xs">{reference}</span>
                   )}

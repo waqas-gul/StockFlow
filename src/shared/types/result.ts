@@ -9,6 +9,7 @@
  * - SETTING_LOCKED: a setting that can no longer change (currency decimal places once financial data exists).
  * - UNIT_LOCKED: a product unit change that stock history forbids (base quantity, base unit, removing a unit).
  * - DUPLICATE: a name or code that is already used (company name, product code).
+ * - INVENTORY_INVARIANT: a document's saved stock records no longer match it, so it cannot be reversed exactly.
  */
 export type AppErrorCode =
   | 'VALIDATION'
@@ -25,6 +26,7 @@ export type AppErrorCode =
   | 'RESTORE_FAILED'
   | 'SETTING_LOCKED'
   | 'UNIT_LOCKED'
+  | 'INVENTORY_INVARIANT'
   | 'DB_ERROR'
   | 'INTERNAL'
 

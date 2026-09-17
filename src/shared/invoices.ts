@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CurrencyDigitsSchema } from './customers'
+import { isCalendarDate } from './dates'
 import { BPS_PER_WHOLE } from './domain/money'
 import {
   PAYMENT_METHODS,
@@ -9,7 +10,14 @@ import {
 } from './payments'
 import { MAX_UNITS_PER_PRODUCT } from './products'
 import { MAX_STOCK_QUANTITY } from './stock'
-import { DateSchema, IdSchema, RequestIdSchema, optionalText, wholeNumber } from './validation'
+import {
+  DateSchema,
+  IdSchema,
+  RequestIdSchema,
+  optionalText,
+  requiredText,
+  wholeNumber
+} from './validation'
 
 /*
  * Sales invoices (plan §11). Posting an invoice is one transaction in the main process: the header with a copy of the
@@ -301,8 +309,13 @@ export interface InvoiceDetail {
   readonly addaName: string | null
   readonly checkedBy: string | null
   readonly notes: string | null
+  /** When the dispatch details last changed after saving; null when they never did. */
+  readonly dispatchUpdatedAt: string | null
+  /** The payment saved with the invoice, with its current status (it may have been voided on its own since). */
   readonly payment: InvoicePayment | null
   readonly lines: readonly InvoiceLine[]
+  /** Every dispatch change made after saving, oldest first. */
+  readonly changes: readonly InvoiceChange[]
   readonly voidReason: string | null
   readonly voidDate: string | null
   readonly voidedAt: string | null
@@ -314,6 +327,105 @@ export interface InvoiceSaveResult extends InvoiceDetail {
   readonly balanceAfterMinor: number
   /** True when the request id had already been saved: the saved invoice is returned and nothing new is written. */
   readonly replayed: boolean
+}
+
+// --- History, dispatch changes and voids (Phase 9A) -----------------------------------------------------------------
+
+export const MAX_INVOICE_PAGE_SIZE = 100
+export const INVOICE_VOID_REASON_MAX = 300
+export const DISPATCH_NOTE_MAX = 300
+
+const OptionalDateSchema = z.string().refine(isCalendarDate, 'Enter a valid date.').nullable()
+
+/** `window.api.invoices.list(...)`: newest first. */
+export const InvoiceListInputSchema = z
+  .strictObject({
+    page: wholeNumber(1, 1_000_000),
+    pageSize: wholeNumber(1, MAX_INVOICE_PAGE_SIZE),
+    /** Words matched against the invoice number, the customer's code and the saved customer and shop names. */
+    search: z.string().trim().max(100, 'Use at most 100 characters.'),
+    status: z.enum(['all', 'POSTED', 'VOID']),
+    /** Inclusive invoice date range; null leaves that side open. */
+    dateFrom: OptionalDateSchema,
+    dateTo: OptionalDateSchema
+  })
+  .refine(
+    (input) => input.dateFrom === null || input.dateTo === null || input.dateFrom <= input.dateTo,
+    { path: ['dateTo'], message: 'The end date cannot be before the start date.' }
+  )
+export type InvoiceListInput = z.output<typeof InvoiceListInputSchema>
+
+/** A row of Invoice History: the saved customer names and amounts. */
+export interface InvoiceSummary {
+  readonly id: number
+  readonly invoiceNo: string
+  readonly invoiceDate: string
+  readonly customerId: number
+  readonly customerCode: string
+  readonly customerName: string
+  readonly customerShopName: string | null
+  readonly totalMinor: number
+  readonly receivedMinor: number
+  /** The customer's balance right after the invoice was saved. */
+  readonly netOutstandingMinor: number
+  readonly status: InvoiceStatus
+}
+
+/** The dispatch details, the only invoice fields that may change after saving (as invoice_change_log.field). */
+export const INVOICE_DISPATCH_FIELDS = ['bilty_no', 'transport_name', 'adda_name'] as const
+export type InvoiceDispatchField = (typeof INVOICE_DISPATCH_FIELDS)[number]
+
+export const INVOICE_DISPATCH_FIELD_LABELS: Readonly<Record<InvoiceDispatchField, string>> =
+  Object.freeze({ bilty_no: 'Bilty No', transport_name: 'Transport', adda_name: 'Adda' })
+
+/** `window.api.invoices.updateDispatch(...)`: the whole dispatch block as it should be now, with an optional note. */
+export const InvoiceDispatchUpdateSchema = z.strictObject({
+  id: IdSchema,
+  biltyNo: optionalText(BILTY_NO_MAX),
+  transportName: optionalText(TRANSPORT_NAME_MAX),
+  addaName: optionalText(ADDA_NAME_MAX),
+  /** Why the details changed; saved with each change. */
+  note: optionalText(DISPATCH_NOTE_MAX)
+})
+export type InvoiceDispatchUpdateInput = z.output<typeof InvoiceDispatchUpdateSchema>
+
+/** One logged dispatch change. */
+export interface InvoiceChange {
+  readonly id: number
+  readonly field: string
+  readonly oldValue: string | null
+  readonly newValue: string | null
+  readonly changedAt: string
+  readonly note: string | null
+}
+
+export interface InvoiceDispatchResult extends InvoiceDetail {
+  /** The fields that changed; empty when the details were already as sent (nothing was written). */
+  readonly changedFields: readonly InvoiceDispatchField[]
+}
+
+/**
+ * Voiding the walk-in customer's invoice also voids the payment received with it, in the same transaction, so the
+ * walk-in account stays at zero. The operator must confirm that the money was returned.
+ */
+export const WALK_IN_VOID_MESSAGE =
+  'Walk-in invoice cannot be voided without reversing its received payment.'
+
+/** `window.api.invoices.void(...)`. */
+export const InvoiceVoidInputSchema = z.strictObject({
+  id: IdSchema,
+  reason: requiredText('reason for voiding', INVOICE_VOID_REASON_MAX),
+  /**
+   * Walk-in only: the money was given back, so the payment received with the invoice is voided with it. Required for
+   * a walk-in invoice whose payment is still posted; refused for any other invoice.
+   */
+  moneyReturned: z.boolean({ error: 'Say whether the money was returned.' })
+})
+export type InvoiceVoidInput = z.output<typeof InvoiceVoidInputSchema>
+
+export interface InvoiceVoidResult extends InvoiceDetail {
+  /** The customer's balance now, after the void. */
+  readonly balanceAfterMinor: number
 }
 
 /** The indexes of rows whose unit already appeared on an earlier row. */

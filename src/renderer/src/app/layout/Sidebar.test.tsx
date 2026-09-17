@@ -49,6 +49,15 @@ describe('Sidebar', () => {
     ])
   })
 
+  it('keeps Invoice History active on an invoice page, but not on New Invoice', () => {
+    const current = (pathname: string): string[] =>
+      renderSidebarLinks(pathname)
+        .filter((link) => link.current === 'page')
+        .map((link) => link.href)
+    expect(current('/invoices/12')).toEqual(['/invoices'])
+    expect(current('/invoices/new')).toEqual(['/invoices/new'])
+  })
+
   it('keeps Customers active on a customer page', () => {
     const links = renderSidebarLinks('/customers/12')
     expect(links.filter((link) => link.current === 'page').map((link) => link.href)).toEqual([

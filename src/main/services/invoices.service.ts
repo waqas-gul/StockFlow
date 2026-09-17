@@ -1,4 +1,4 @@
-import { isWalkInCustomer } from '@shared/customers'
+import { isWalkInCustomer, type ListPage } from '@shared/customers'
 import { localDateString } from '@shared/dates'
 import { applyOutflow, formatMoney, sumMinor } from '@shared/domain'
 import {
@@ -7,26 +7,33 @@ import {
   type InvoiceTotals
 } from '@shared/invoice-totals'
 import {
+  INVOICE_DISPATCH_FIELDS,
   InvoiceContextInputSchema,
   InvoiceCreateSchema,
+  InvoiceDispatchUpdateSchema,
   InvoiceIdSchema,
+  InvoiceListInputSchema,
   PRICE_TIER_LABELS,
   WALK_IN_FULL_PAYMENT_MESSAGE,
   WALK_IN_FULL_PAYMENT_RULE,
   formatInvoiceNumber,
+  type InvoiceChange,
   type InvoiceContext,
   type InvoiceCreateInput,
   type InvoiceDetail,
+  type InvoiceDispatchField,
+  type InvoiceDispatchResult,
   type InvoiceLine,
   type InvoicePayment,
   type InvoiceQuantity,
   type InvoiceSaveResult,
   type InvoiceStatus,
+  type InvoiceSummary,
   type PriceTier
 } from '@shared/invoices'
 import type { PaymentMethod, PaymentStatus } from '@shared/payments'
 import type { Settings } from '@shared/settings'
-import type { Db } from '../db/adapter'
+import type { Db, SqlValue } from '../db/adapter'
 import { AppFailure, parseInput } from '../errors'
 import {
   appendLedgerEntry,
@@ -65,9 +72,23 @@ import { assertCurrencyDigits, readSettings } from './settings.service'
  *
  * COGS: each line leaves stock at round_half_up(V × qty ÷ Q) of a running, transaction-local Q/V per product, and the
  * last units take exactly the value left. The cost is frozen on the line and on the SALE movement.
+ *
+ * After saving (Phase 9A), an invoice is read from its own copies only (never from the current customer, product or
+ * unit), and only its dispatch details change, each change logged in invoice_change_log. Anything else is corrected
+ * by voiding the invoice (invoice-void.service.ts).
  */
 
 const PAYMENT_REQUEST_PREFIX = 'invoice:'
+const MAX_SEARCH_WORDS = 8
+
+/** invoice_change_log.field (the invoices column) → the input key its new value comes from. */
+const DISPATCH_INPUT_KEYS: Readonly<
+  Record<InvoiceDispatchField, 'biltyNo' | 'transportName' | 'addaName'>
+> = {
+  bilty_no: 'biltyNo',
+  transport_name: 'transportName',
+  adda_name: 'addaName'
+}
 
 interface ProductRow {
   id: number
@@ -132,6 +153,7 @@ interface InvoiceRow {
   adda_name: string | null
   checked_by: string | null
   notes: string | null
+  dispatch_updated_at: string | null
   void_reason: string | null
   void_date: string | null
   voided_at: string | null
@@ -276,6 +298,118 @@ export function createInvoice(db: Db, input: unknown, now: Date): InvoiceSaveRes
 /** One invoice as saved. */
 export function getInvoice(db: Db, id: unknown): InvoiceDetail {
   return readInvoice(db, parseInput(InvoiceIdSchema, id))
+}
+
+/** Invoice History: newest first, filtered by search words, date range and status. */
+export function listInvoices(db: Db, input: unknown): ListPage<InvoiceSummary> {
+  const filters = parseInput(InvoiceListInputSchema, input)
+  const { page, pageSize } = filters
+  const clauses: string[] = []
+  const params: SqlValue[] = []
+  const words = filters.search
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .slice(0, MAX_SEARCH_WORDS)
+  // The saved names: an invoice is found by the name it was made out to (and by the customer code, which never changes).
+  const columns = ['i.invoice_no', 'c.code', 'i.cust_name', 'i.cust_shop_name']
+  for (const word of words) {
+    const pattern = `%${word.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
+    clauses.push(`(${columns.map((column) => `${column} LIKE ? ESCAPE '\\'`).join(' OR ')})`)
+    params.push(...columns.map(() => pattern))
+  }
+  if (filters.status !== 'all') {
+    clauses.push('i.status = ?')
+    params.push(filters.status)
+  }
+  if (filters.dateFrom !== null) {
+    clauses.push('i.invoice_date >= ?')
+    params.push(filters.dateFrom)
+  }
+  if (filters.dateTo !== null) {
+    clauses.push('i.invoice_date <= ?')
+    params.push(filters.dateTo)
+  }
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+  const from = 'FROM invoices AS i JOIN customers AS c ON c.id = i.customer_id'
+  const total = db.get<{ n: number }>(`SELECT count(*) AS n ${from} ${where}`, params)!.n
+  const rows = db.all<{
+    id: number
+    invoice_no: string
+    invoice_date: string
+    customer_id: number
+    customer_code: string
+    cust_name: string
+    cust_shop_name: string | null
+    total_minor: number
+    received_minor: number
+    net_outstanding_minor: number
+    status: InvoiceStatus
+  }>(
+    `SELECT i.id, i.invoice_no, i.invoice_date, i.customer_id, c.code AS customer_code, i.cust_name, i.cust_shop_name,
+            i.total_minor, i.received_minor, i.net_outstanding_minor, i.status
+     ${from} ${where}
+     ORDER BY i.invoice_date DESC, i.seq_no DESC LIMIT ? OFFSET ?`,
+    [...params, pageSize, (page - 1) * pageSize]
+  )
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      invoiceNo: row.invoice_no,
+      invoiceDate: row.invoice_date,
+      customerId: row.customer_id,
+      customerCode: row.customer_code,
+      customerName: row.cust_name,
+      customerShopName: row.cust_shop_name,
+      totalMinor: row.total_minor,
+      receivedMinor: row.received_minor,
+      netOutstandingMinor: row.net_outstanding_minor,
+      status: row.status
+    })),
+    total,
+    page,
+    pageSize
+  }
+}
+
+/**
+ * Sets a posted invoice's dispatch details (Bilty No, Transport, Adda), the only fields that change after saving. Each
+ * field that really changes gets one invoice_change_log row with its old and new value and the note; when nothing
+ * changes, nothing is written. A void invoice keeps its details.
+ */
+export function updateInvoiceDispatch(db: Db, input: unknown, now: Date): InvoiceDispatchResult {
+  const update = parseInput(InvoiceDispatchUpdateSchema, input)
+  return db.transaction(() => {
+    const row = db.get<Pick<InvoiceRow, 'invoice_no' | 'status' | InvoiceDispatchField>>(
+      'SELECT invoice_no, status, bilty_no, transport_name, adda_name FROM invoices WHERE id = ?',
+      [update.id]
+    )
+    if (row === undefined) throw invoiceNotFound()
+    if (row.status === 'VOID') {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: `Invoice ${row.invoice_no} is void, so its dispatch details can no longer be changed.`
+      })
+    }
+    const changedFields = INVOICE_DISPATCH_FIELDS.filter(
+      (field) => row[field] !== update[DISPATCH_INPUT_KEYS[field]]
+    )
+    if (changedFields.length > 0) {
+      const changedAt = now.toISOString()
+      db.run(
+        `UPDATE invoices SET bilty_no = ?, transport_name = ?, adda_name = ?, dispatch_updated_at = ?
+         WHERE id = ?`,
+        [update.biltyNo, update.transportName, update.addaName, changedAt, update.id]
+      )
+      for (const field of changedFields) {
+        db.run(
+          `INSERT INTO invoice_change_log (invoice_id, field, old_value, new_value, changed_at, note)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [update.id, field, row[field], update[DISPATCH_INPUT_KEYS[field]], changedAt, update.note]
+        )
+      }
+    }
+    return { ...readInvoice(db, update.id), changedFields }
+  })
 }
 
 /**
@@ -731,21 +865,20 @@ function saveResult(db: Db, id: number, replayed: boolean): InvoiceSaveResult {
   return { ...invoice, balanceAfterMinor: customerBalance(db, invoice.customerId), replayed }
 }
 
-function readInvoice(db: Db, id: number): InvoiceDetail {
+/** An invoice exactly as saved, with its counter payment's current status and its dispatch change log. */
+export function readInvoice(db: Db, id: number): InvoiceDetail {
   const row = db.get<InvoiceRow>(
     `SELECT i.id, i.invoice_no, i.invoice_date, i.invoice_code, i.status, i.customer_id, c.code AS customer_code,
             i.cust_name, i.cust_shop_name, i.cust_phone, i.cust_address, i.cust_city, i.price_tier, i.gross_minor,
             i.line_discount_minor, i.line_scheme_minor, i.extra_discount_minor, i.net_minor, i.freight_minor,
             i.total_minor, i.received_minor, i.previous_balance_minor, i.net_outstanding_minor, i.cogs_minor,
-            i.bilty_no, i.transport_name, i.adda_name, i.checked_by, i.notes, i.void_reason, i.void_date, i.voided_at,
-            i.created_at
+            i.bilty_no, i.transport_name, i.adda_name, i.checked_by, i.notes, i.dispatch_updated_at, i.void_reason,
+            i.void_date, i.voided_at, i.created_at
      FROM invoices AS i JOIN customers AS c ON c.id = i.customer_id
      WHERE i.id = ?`,
     [id]
   )
-  if (row === undefined) {
-    throw new AppFailure({ code: 'NOT_FOUND', message: 'This invoice no longer exists.' })
-  }
+  if (row === undefined) throw invoiceNotFound()
   const items = db.all<ItemRow>(
     `SELECT id, line_no, product_id, prod_code, prod_name, company_name, packing_label, qty_base, scheme_qty_base,
             gross_minor, discount_bps, discount_minor, scheme_minor, ctn_count, net_minor, cost_minor
@@ -770,6 +903,18 @@ function readInvoice(db: Db, id: number): InvoiceDetail {
   }>(
     `SELECT id, payment_no, payment_date, amount_minor, method, reference, status FROM payments
      WHERE invoice_id = ? ORDER BY id LIMIT 1`,
+    [id]
+  )
+  const changes = db.all<{
+    id: number
+    field: string
+    old_value: string | null
+    new_value: string | null
+    changed_at: string
+    note: string | null
+  }>(
+    `SELECT id, field, old_value, new_value, changed_at, note FROM invoice_change_log
+     WHERE invoice_id = ? ORDER BY id`,
     [id]
   )
   return {
@@ -802,6 +947,7 @@ function readInvoice(db: Db, id: number): InvoiceDetail {
     addaName: row.adda_name,
     checkedBy: row.checked_by,
     notes: row.notes,
+    dispatchUpdatedAt: row.dispatch_updated_at,
     payment:
       payment === undefined
         ? null
@@ -845,9 +991,21 @@ function readInvoice(db: Db, id: number): InvoiceDetail {
           qtyBase: quantity.qty_base
         }))
     })),
+    changes: changes.map((change): InvoiceChange => ({
+      id: change.id,
+      field: change.field,
+      oldValue: change.old_value,
+      newValue: change.new_value,
+      changedAt: change.changed_at,
+      note: change.note
+    })),
     voidReason: row.void_reason,
     voidDate: row.void_date,
     voidedAt: row.voided_at,
     createdAt: row.created_at
   }
+}
+
+export function invoiceNotFound(): AppFailure {
+  return new AppFailure({ code: 'NOT_FOUND', message: 'This invoice no longer exists.' })
 }

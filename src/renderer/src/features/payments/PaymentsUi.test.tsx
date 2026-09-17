@@ -10,6 +10,7 @@ import { DuplicatePaymentWarning } from './DuplicatePaymentWarning'
 import { PaymentDetail } from './PaymentDetailDialog'
 import { PaymentForm } from './PaymentForm'
 import { PaymentPreviewPanel } from './PaymentPreviewPanel'
+import { pickableCustomers } from '../customers/customer-display'
 import { PAYMENTS_PAGE_SIZE, PaymentsPage } from './PaymentsPage'
 import { voidConfirmationText } from './payment-display'
 
@@ -67,7 +68,10 @@ const detail: PaymentDetailData = {
   note: 'Collected at the shop',
   voidReason: null,
   voidDate: null,
-  voidedAt: null
+  voidedAt: null,
+  invoiceId: null,
+  invoiceNo: null,
+  invoiceStatus: null
 }
 
 function client(): QueryClient {
@@ -145,6 +149,13 @@ describe('Payments page', () => {
 })
 
 describe('Receive Payment', () => {
+  it('never offers the walk-in customer in the customer picker', () => {
+    const ali = { ...customer }
+    const walkIn = { ...customer, id: 1, code: 'C-00001', name: 'Cash / Walk-in' }
+    expect(pickableCustomers([walkIn, ali], true)).toEqual([ali])
+    expect(pickableCustomers([walkIn, ali], false)).toEqual([walkIn, ali])
+  })
+
   it('shows the chosen customer, the current balance and every payment field', () => {
     const queryClient = client()
     queryClient.setQueryData(queryKeys.customers.detail(customer.id), customer)
@@ -231,6 +242,43 @@ describe('Payment detail', () => {
     expect(voidConfirmationText(detail, RS)).toBe(
       'Voiding RCP-000001 adds Rs 4,000.00 back to the balance of C-00002 Ali Raza. The payment stays in the history as void.'
     )
+  })
+
+  it('links a counter payment to its invoice; a walk-in cash sale payment is voided only with its invoice', () => {
+    const counter = {
+      ...detail,
+      invoiceId: 5,
+      invoiceNo: 'INV-000005',
+      invoiceStatus: 'POSTED' as const
+    }
+    const account = render(<PaymentDetail payment={counter} currency={RS} onClose={noop} />)
+    expect(text(account)).toContain('Received with invoice INV-000005')
+    expect(account).toContain('href="/invoices/5"')
+    expect(text(account)).toContain('Void Payment')
+
+    const walkIn = {
+      ...counter,
+      customerCode: 'C-00001',
+      customerName: 'Cash / Walk-in',
+      shopName: null
+    }
+    const locked = text(render(<PaymentDetail payment={walkIn} currency={RS} onClose={noop} />))
+    expect(locked).not.toContain('Void Payment')
+    expect(locked).toContain(
+      'This payment was received with walk-in invoice INV-000005. To give the money back, void that invoice and confirm the money was returned'
+    )
+    // An older walk-in payment whose invoice is already void is not locked.
+    const older = text(
+      render(
+        <PaymentDetail
+          payment={{ ...walkIn, invoiceStatus: 'VOID' }}
+          currency={RS}
+          onClose={noop}
+        />
+      )
+    )
+    expect(older).toContain('Received with invoice INV-000005 (void)')
+    expect(older).toContain('Void Payment')
   })
 
   it('a void payment shows when and why, with no void action', () => {

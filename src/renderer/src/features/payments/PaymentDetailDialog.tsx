@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, LoaderCircle } from 'lucide-react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
+import { isWalkInCustomer } from '@shared/customers'
 import { formatDisplayDate } from '@shared/dates'
 import {
   PAYMENT_METHOD_LABELS,
@@ -105,6 +106,23 @@ export function PaymentDetail({
         <Detail label="Method" value={PAYMENT_METHOD_LABELS[payment.method]} />
         <Detail label="Reference" value={payment.reference} />
         <Detail label="Note" value={payment.note} />
+        {payment.invoiceId !== null && (
+          <div>
+            <dt className="text-muted-foreground">Received with invoice</dt>
+            <dd className="mt-0.5">
+              <Link
+                to={`/invoices/${payment.invoiceId}`}
+                className="font-mono text-sm font-medium underline-offset-4 hover:underline"
+                onClick={onClose}
+              >
+                {payment.invoiceNo}
+              </Link>
+              {payment.invoiceStatus === 'VOID' && (
+                <span className="text-xs text-muted-foreground"> (void)</span>
+              )}
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="text-muted-foreground">Status</dt>
           <dd className="mt-0.5">
@@ -122,10 +140,26 @@ export function PaymentDetail({
           </>
         )}
       </dl>
-      {payment.status === 'POSTED' && (
+      {payment.status === 'POSTED' && walkInCounterPayment(payment) && (
+        <p className="rounded-md border p-3 text-sm text-muted-foreground">
+          This payment was received with walk-in invoice {payment.invoiceNo}. To give the money
+          back, void that invoice and confirm the money was returned: the payment is voided with it
+          and the walk-in account stays at zero.
+        </p>
+      )}
+      {payment.status === 'POSTED' && !walkInCounterPayment(payment) && (
         <VoidPayment payment={payment} currency={currency} onVoided={onVoided} />
       )}
     </div>
+  )
+}
+
+/** A walk-in cash sale's payment is voided only with its (posted) invoice. */
+function walkInCounterPayment(payment: PaymentDetailData): boolean {
+  return (
+    isWalkInCustomer(payment.customerCode) &&
+    payment.invoiceId !== null &&
+    payment.invoiceStatus === 'POSTED'
   )
 }
 

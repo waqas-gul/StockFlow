@@ -270,10 +270,52 @@ describe('Customer detail', () => {
     }
   })
 
-  it('offers no Deactivate for the walk-in customer', () => {
+  it('offers no Deactivate, Receive Payment or Adjust Balance for the walk-in customer', () => {
     const shown = detail({ ...customer, code: 'C-00001', name: 'Cash / Walk-in', shopName: null })
     expect(shown).toContain('Edit Customer')
-    expect(shown).not.toMatch(/Deactivate|Reactivate/)
+    expect(shown).not.toMatch(/Deactivate|Reactivate|Receive Payment|Adjust Balance/)
+    expect(shown).toContain(
+      'Cash / Walk-in is for counter sales paid in full, so its account stays at zero: it takes no separate payments or balance adjustments.'
+    )
+  })
+
+  it('links an invoice entry to its invoice', () => {
+    const html = render(
+      <CustomerDetailView
+        customer={customer}
+        ledger={{
+          ...ledger,
+          total: 2,
+          rows: [
+            row({
+              id: 5,
+              type: 'INVOICE',
+              amountMinor: 522000,
+              invoiceId: 9,
+              invoiceNo: 'INV-000009'
+            }),
+            row({
+              id: 6,
+              type: 'INVOICE_VOID',
+              amountMinor: -522000,
+              invoiceId: 9,
+              invoiceNo: 'INV-000009',
+              note: 'Wrong customer'
+            })
+          ]
+        }}
+        currency={RS}
+        busy={false}
+        onPage={noop}
+        onReceivePayment={noop}
+        onAdjustBalance={noop}
+        onEdit={noop}
+        onToggleActive={noop}
+        onOpenPayment={noop}
+      />
+    )
+    expect(html.match(/href="\/invoices\/9"/g)).toHaveLength(2)
+    expect(text(html)).toContain('Wrong customer INV-000009')
   })
 
   it('an inactive customer keeps its history; a new payment needs reactivation, a correction does not', () => {

@@ -1,5 +1,5 @@
 import type { CustomerLedgerInput, CustomerListInput, CustomerSearchInput } from '@shared/customers'
-import type { InvoiceContextInput } from '@shared/invoices'
+import type { InvoiceContextInput, InvoiceListInput } from '@shared/invoices'
 import type { PaymentListInput } from '@shared/payments'
 import type { ProductListInput, ProductSearchInput } from '@shared/products'
 import type { AdjustmentListInput, ReceiptListInput, StockCardInput } from '@shared/stock'
@@ -46,8 +46,10 @@ export const queryKeys = {
     detail: (id: number) => ['payments', 'detail', id] as const
   },
   invoices: {
-    /** Every invoice query: invalidated after an invoice is posted. */
+    /** Every invoice query: invalidated after an invoice is posted, voided or its dispatch details change. */
     all: ['invoices'] as const,
-    context: (input: InvoiceContextInput) => ['invoices', 'context', input] as const
+    context: (input: InvoiceContextInput) => ['invoices', 'context', input] as const,
+    list: (input: InvoiceListInput) => ['invoices', 'list', input] as const,
+    detail: (id: number) => ['invoices', 'detail', id] as const
   }
 }

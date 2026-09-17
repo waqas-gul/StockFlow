@@ -13,7 +13,13 @@ import type {
   CustomerSearchInput,
   ListPage
 } from '@shared/customers'
-import type { InvoiceContext, InvoiceContextInput } from '@shared/invoices'
+import type {
+  InvoiceContext,
+  InvoiceContextInput,
+  InvoiceDetail,
+  InvoiceListInput,
+  InvoiceSummary
+} from '@shared/invoices'
 import type { PaymentDetail, PaymentListInput, PaymentSummary } from '@shared/payments'
 import type {
   Product,
@@ -306,8 +312,40 @@ export function invoiceContextQuery(
   })
 }
 
+/** `window.api.invoices.list(...)`: Invoice History, newest first. */
+export function invoiceListQuery(
+  input: InvoiceListInput
+): UseQueryOptions<
+  ListPage<InvoiceSummary>,
+  Error,
+  ListPage<InvoiceSummary>,
+  ReturnType<typeof queryKeys.invoices.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.invoices.list(input),
+    queryFn: () => unwrap(window.api.invoices.list(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.invoices.get(id)`: always read fresh (its payment may have been voided since). */
+export function invoiceQuery(
+  id: number
+): UseQueryOptions<
+  InvoiceDetail,
+  Error,
+  InvoiceDetail,
+  ReturnType<typeof queryKeys.invoices.detail>
+> {
+  return queryOptions({
+    queryKey: queryKeys.invoices.detail(id),
+    queryFn: () => unwrap(window.api.invoices.get(id)),
+    staleTime: 0
+  })
+}
+
 /**
- * After an invoice is posted: stock and products (quantities), customers and payments (balances, the counter payment),
+ * After an invoice is posted or voided: stock and products (quantities), customers and payments (balances, the counter payment),
  * invoices (the next number) and settings (the currency decimal places lock) are read again.
  */
 export function refreshAfterInvoice(queryClient: QueryClient): void {
@@ -317,12 +355,13 @@ export function refreshAfterInvoice(queryClient: QueryClient): void {
 }
 
 /**
- * After a customer, payment, void or balance adjustment: customers (balances), payments and settings (the currency
- * decimal places lock once financial data exists) are read again.
+ * After a customer, payment, void or balance adjustment: customers (balances), payments, invoices (the status of a
+ * counter payment) and settings (the currency decimal places lock once financial data exists) are read again.
  */
 export function refreshAfterCustomerChange(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.customers.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.payments.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
 }
 

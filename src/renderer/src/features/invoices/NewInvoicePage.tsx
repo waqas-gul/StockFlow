@@ -50,7 +50,8 @@ interface PendingPost {
 }
 
 const notify: InvoiceNotifier = {
-  success: (message) => toast.success(message),
+  // At the top, briefly: the bottom-right corner holds Post Invoice, which is pressed again at once in rapid billing.
+  success: (message) => toast.success(message, { position: 'top-center', duration: 2500 }),
   error: (message) => toast.error(message)
 }
 

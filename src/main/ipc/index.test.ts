@@ -906,6 +906,148 @@ describe('invoices', () => {
     ).resolves.toMatchObject({ ok: true, data: { nextInvoiceNo: 'INV-000001' } })
   })
 
+  it('lists, reads, updates the dispatch details of and voids an invoice through IPC', async () => {
+    const ids = await seed()
+    const posted = (await call('invoices:post', invoiceInput(ids, ids.customerId))) as {
+      ok: true
+      data: { id: number; payment: { id: number } }
+    }
+    const id = posted.data.id
+    await expect(
+      call('invoices:list', {
+        page: 1,
+        pageSize: 25,
+        search: 'ali',
+        status: 'all',
+        dateFrom: TODAY,
+        dateTo: null
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { total: 1, items: [{ id, invoiceNo: 'INV-000001', customerName: 'Ali Raza' }] }
+    })
+    await expect(call('invoices:get', id)).resolves.toMatchObject({
+      ok: true,
+      data: { id, status: 'POSTED', payment: { status: 'POSTED' }, changes: [] }
+    })
+    await expect(
+      call('invoices:updateDispatch', {
+        id,
+        biltyNo: 'BL-7',
+        transportName: null,
+        addaName: null,
+        note: 'Late bilty'
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        biltyNo: 'BL-7',
+        changedFields: ['bilty_no'],
+        changes: [{ field: 'bilty_no', oldValue: null, newValue: 'BL-7', note: 'Late bilty' }]
+      }
+    })
+
+    // Rs 2,950.00 invoice, Rs 1,000.00 received: the void leaves the payment as Rs 1,000.00 credit.
+    await expect(
+      call('invoices:void', { id, reason: 'Wrong customer', moneyReturned: false })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        status: 'VOID',
+        voidDate: TODAY,
+        balanceAfterMinor: -100_000,
+        payment: { status: 'POSTED' }
+      }
+    })
+    await expect(call('stock:summary', ids.productId)).resolves.toMatchObject({
+      ok: true,
+      data: { qtyBase: 120 }
+    })
+    const again = await call('invoices:void', { id, reason: 'Twice', moneyReturned: false })
+    expect(again).toEqual({
+      ok: false,
+      error: { code: 'FORBIDDEN_STATE', message: 'Invoice INV-000001 is already void.' }
+    })
+    const dispatch = await call('invoices:updateDispatch', {
+      id,
+      biltyNo: 'BL-8',
+      transportName: null,
+      addaName: null,
+      note: null
+    })
+    expect(dispatch).toMatchObject({ ok: false, error: { code: 'FORBIDDEN_STATE' } })
+    const missing = await call('invoices:get', 999)
+    expect(missing).toEqual({
+      ok: false,
+      error: { code: 'NOT_FOUND', message: 'This invoice no longer exists.' }
+    })
+    expect(JSON.stringify([again, dispatch, missing])).not.toMatch(/SQLITE|constraint|trigger/i)
+  })
+
+  it('keeps the walk-in account at zero: clean refusals, and a void that returns the money', async () => {
+    const ids = await seed()
+    const posted = (await call(
+      'invoices:post',
+      invoiceInput(ids, 1, { requestId: 'ipc-invoice-0006', receivedMinor: 295_000 })
+    )) as { ok: true; data: { id: number; payment: { id: number } } }
+    const { id, payment } = posted.data
+
+    const withoutReturn = await call('invoices:void', {
+      id,
+      reason: 'Refund',
+      moneyReturned: false
+    })
+    expect(withoutReturn).toMatchObject({
+      ok: false,
+      error: {
+        code: 'VALIDATION',
+        message:
+          'Walk-in invoice cannot be voided without reversing its received payment. Confirm that the money was returned.',
+        fieldErrors: {
+          moneyReturned: [
+            'Walk-in invoice cannot be voided without reversing its received payment.'
+          ]
+        }
+      }
+    })
+    const paymentVoid = await call('payments:void', { id: payment.id, reason: 'Refund' })
+    expect(paymentVoid).toMatchObject({ ok: false, error: { code: 'FORBIDDEN_STATE' } })
+    const standalone = await call('payments:create', {
+      requestId: 'ipc-walk-in-payment',
+      customerId: 1,
+      paymentDate: TODAY,
+      amountMinor: 1_000,
+      method: 'CASH',
+      reference: null,
+      note: null,
+      currencyMinorDigits: 2
+    })
+    expect(standalone).toMatchObject({ ok: false, error: { code: 'FORBIDDEN_STATE' } })
+    const adjustment = await call('customers:adjustBalance', {
+      customerId: 1,
+      entryDate: TODAY,
+      direction: 'INCREASE',
+      amountMinor: 1_000,
+      reason: 'Test',
+      currencyMinorDigits: 2
+    })
+    expect(adjustment).toMatchObject({ ok: false, error: { code: 'FORBIDDEN_STATE' } })
+    expect(JSON.stringify([withoutReturn, paymentVoid, standalone, adjustment])).not.toMatch(
+      /SQLITE|constraint|trigger/i
+    )
+
+    await expect(
+      call('invoices:void', { id, reason: 'Refund', moneyReturned: true })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { status: 'VOID', balanceAfterMinor: 0, payment: { status: 'VOID' } }
+    })
+    await expect(call('customers:get', 1)).resolves.toMatchObject({
+      ok: true,
+      data: { balanceMinor: 0 }
+    })
+  })
+
   it.each<[string, string, unknown]>([
     ['an incomplete invoice', 'invoices:post', { requestId: 'ipc-invoice-0009' }],
     ['a context without product ids', 'invoices:context', { customerId: null }],
@@ -913,7 +1055,16 @@ describe('invoices', () => {
       'a context with a customer id as text',
       'invoices:context',
       { customerId: '1', productIds: [] }
-    ]
+    ],
+    ['a list without filters', 'invoices:list', { page: 1 }],
+    ['an invoice id as text', 'invoices:get', '1'],
+    [
+      'a dispatch update that also changes the total',
+      'invoices:updateDispatch',
+      { id: 1, biltyNo: null, transportName: null, addaName: null, note: null, totalMinor: 0 }
+    ],
+    ['a void without a reason', 'invoices:void', { id: 1, moneyReturned: false }],
+    ['a void without the money decision', 'invoices:void', { id: 1, reason: 'Duplicate' }]
   ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
     await expect(call(channel, input)).resolves.toMatchObject({
       ok: false,

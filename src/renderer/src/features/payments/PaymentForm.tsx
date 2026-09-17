@@ -141,6 +141,7 @@ export function PaymentForm({
           <CustomerPicker
             id="payment-customer"
             ariaLabel="Customer"
+            excludeWalkIn
             label={customerText}
             invalid={errors.customerId !== undefined}
             onPick={(item) => {

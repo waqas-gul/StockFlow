@@ -39,7 +39,7 @@ import { assertCurrencyDigits } from './settings.service'
  * - An opening balance is written only when the customer is created, as its first ledger entry, in the same transaction.
  *   Later corrections are ADJUSTMENT entries. Profile edits never touch the ledger.
  * - A customer is never deleted: it is deactivated, and its history stays readable. The walk-in customer (C-00001) is
- *   always active and keeps its name.
+ *   always active and keeps its name, and its balance is never adjusted (its account stays at zero).
  * - Balances are Σ customer_ledger.amount_minor, read fresh on every call.
  */
 
@@ -288,6 +288,13 @@ export function adjustCustomerBalance(db: Db, input: unknown, now: Date): Balanc
   return db.transaction(() => {
     assertCurrencyDigits(db, adjustment.currencyMinorDigits)
     const customer = customerRow(db, adjustment.customerId, 'customerId')
+    if (isWalkInCustomer(customer.code)) {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: `${customer.code} ${customer.name} is the walk-in customer, so its balance cannot be adjusted. Cash sales are paid in full on the invoice.`,
+        fieldErrors: { customerId: ['The walk-in customer balance cannot be adjusted.'] }
+      })
+    }
     assertCustomerPostingDate(db, {
       date: adjustment.entryDate,
       today: localDateString(now),

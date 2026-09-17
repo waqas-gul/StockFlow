@@ -1,4 +1,10 @@
-import { balanceState, type LedgerEntryType, type LedgerRow } from '@shared/customers'
+import {
+  balanceState,
+  isWalkInCustomer,
+  type CustomerListItem,
+  type LedgerEntryType,
+  type LedgerRow
+} from '@shared/customers'
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@shared/payments'
 import { formatAmount, type CurrencyFormat } from '../products/product-display'
 
@@ -88,4 +94,12 @@ export function customerLabel(customer: {
   readonly shopName: string | null
 }): string {
   return `${customer.code} ${customer.name}${customer.shopName === null ? '' : ` (${customer.shopName})`}`
+}
+
+/** The customers a picker offers: without the walk-in customer when it is excluded (e.g. for a payment). */
+export function pickableCustomers(
+  items: readonly CustomerListItem[],
+  excludeWalkIn: boolean
+): readonly CustomerListItem[] {
+  return excludeWalkIn ? items.filter((item) => !isWalkInCustomer(item.code)) : items
 }

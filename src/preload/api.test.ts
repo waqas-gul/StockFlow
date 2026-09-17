@@ -64,7 +64,11 @@ describe('createApi (the preload bridge)', () => {
       'payments:checkDuplicate:function',
       'payments:void:function',
       'invoices:context:function',
-      'invoices:post:function'
+      'invoices:post:function',
+      'invoices:list:function',
+      'invoices:get:function',
+      'invoices:updateDispatch:function',
+      'invoices:void:function'
     ])
   })
 

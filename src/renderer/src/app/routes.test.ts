@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
 import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
+import { InvoiceDetailPage } from '@renderer/features/invoices/InvoiceDetailPage'
+import { InvoiceHistoryPage } from '@renderer/features/invoices/InvoiceHistoryPage'
 import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
@@ -41,6 +43,7 @@ describe('navigation and routes', () => {
 
   const implemented = [
     '/invoices/new',
+    '/invoices',
     '/settings',
     '/products',
     '/stock/in',
@@ -75,15 +78,17 @@ describe('navigation and routes', () => {
     expect(leafComponent('/payments')).toBe(PaymentsPage)
   })
 
-  it('routes /invoices/new to the Phase 8B billing page; invoice history stays a placeholder', () => {
+  it('routes /invoices/new to the billing page, /invoices and /invoices/:id to the Phase 9A history pages', () => {
     expect(leafComponent('/invoices/new')).toBe(NewInvoicePage)
-    expect(leafComponent('/invoices')).toBe(PlaceholderPage)
+    expect(leafComponent('/invoices')).toBe(InvoiceHistoryPage)
+    expect(leafComponent('/invoices/12')).toBe(InvoiceDetailPage)
   })
 
   it('titles a customer page with its section', () => {
     expect(findSectionItem('/customers/12')?.label).toBe('Customers')
     expect(findSectionItem('/customers')?.label).toBe('Customers')
     expect(findSectionItem('/invoices/new')?.label).toBe('New Invoice')
+    expect(findSectionItem('/invoices/12')?.label).toBe('Invoice History')
     expect(findSectionItem('/products/12')).toBeUndefined()
   })
 

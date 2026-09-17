@@ -382,6 +382,7 @@ describe('createInvoice: one transaction for the whole sale', () => {
       addaName: 'Badami Bagh',
       checkedBy: 'Waqas',
       notes: 'Deliver before noon',
+      dispatchUpdatedAt: null,
       payment: null,
       lines: [
         {
@@ -416,6 +417,7 @@ describe('createInvoice: one transaction for the whole sale', () => {
           ]
         }
       ],
+      changes: [],
       voidReason: null,
       voidDate: null,
       voidedAt: null,
