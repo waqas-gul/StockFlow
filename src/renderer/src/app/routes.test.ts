@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
 import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
+import { ExpensesPage } from '@renderer/features/expenses/ExpensesPage'
 import { InvoiceDetailPage } from '@renderer/features/invoices/InvoiceDetailPage'
 import { InvoiceHistoryPage } from '@renderer/features/invoices/InvoiceHistoryPage'
 import { InvoicePrintPage } from '@renderer/features/invoices/InvoicePrintPage'
@@ -51,7 +52,8 @@ describe('navigation and routes', () => {
     '/stock/in',
     '/stock/adjustments',
     '/customers',
-    '/payments'
+    '/payments',
+    '/expenses'
   ]
 
   it.each(expectedPaths.filter((path) => !implemented.includes(path)))(
@@ -91,6 +93,10 @@ describe('navigation and routes', () => {
     const matched = matchRoutes(routes, '/invoices/12/print') ?? []
     expect(matched.map((match) => match.route.Component)).not.toContain(AppShell)
     expect(matchRoutes(routes, '/invoices/12')?.[0].route.Component).toBe(AppShell)
+  })
+
+  it('routes /expenses to the Phase 10 Expenses page', () => {
+    expect(leafComponent('/expenses')).toBe(ExpensesPage)
   })
 
   it('titles a customer page with its section', () => {

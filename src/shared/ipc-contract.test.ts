@@ -34,6 +34,18 @@ import type {
   InvoiceVoidResult
 } from './invoices'
 import type {
+  Expense,
+  ExpenseCategory,
+  ExpenseCategoryCreateInput,
+  ExpenseCategoryUpdateInput,
+  ExpenseCreateInput,
+  ExpenseListInput,
+  ExpenseSaveResult,
+  ExpenseSummary,
+  ExpenseSummaryInput,
+  ExpenseUpdateInput
+} from './expenses'
+import type {
   InvoicePdfResult,
   InvoicePrintInput,
   InvoicePrintResult,
@@ -140,18 +152,30 @@ const CHANNELS = [
   'invoices:void',
   'invoices:printable',
   'invoices:print',
-  'invoices:savePdf'
+  'invoices:savePdf',
+  'expenseCategories:list',
+  'expenseCategories:create',
+  'expenseCategories:update',
+  'expenseCategories:setActive',
+  'expenses:list',
+  'expenses:summary',
+  'expenses:get',
+  'expenses:create',
+  'expenses:update',
+  'expenses:void'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A and 9B calls', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B and 10 calls', () => {
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
-      domain: 'invoices',
-      action: 'savePdf',
-      channel: 'invoices:savePdf'
+      domain: 'expenses',
+      action: 'void',
+      channel: 'expenses:void'
     })
+    // Expenses and their categories are never deleted: there is no delete call.
+    expect(ipcCalls.filter((call) => /delete|remove/i.test(call.action))).toEqual([])
   })
 
   it('names channels <domain>:<action>', () => {
@@ -182,6 +206,8 @@ describe('IPC contract', () => {
       | 'customers'
       | 'payments'
       | 'invoices'
+      | 'expenseCategories'
+      | 'expenses'
     >()
     expectTypeOf<StockFlowApi['app']['info']>().toEqualTypeOf<() => Promise<Result<AppInfo>>>()
     expectTypeOf<StockFlowApi['settings']['get']>().toEqualTypeOf<
@@ -330,6 +356,36 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['invoices']['savePdf']>().toEqualTypeOf<
       (input: InvoicePrintInput) => Promise<Result<InvoicePdfResult>>
+    >()
+    expectTypeOf<StockFlowApi['expenseCategories']['list']>().toEqualTypeOf<
+      () => Promise<Result<ExpenseCategory[]>>
+    >()
+    expectTypeOf<StockFlowApi['expenseCategories']['create']>().toEqualTypeOf<
+      (input: ExpenseCategoryCreateInput) => Promise<Result<ExpenseCategory>>
+    >()
+    expectTypeOf<StockFlowApi['expenseCategories']['update']>().toEqualTypeOf<
+      (input: ExpenseCategoryUpdateInput) => Promise<Result<ExpenseCategory>>
+    >()
+    expectTypeOf<StockFlowApi['expenseCategories']['setActive']>().toEqualTypeOf<
+      (input: SetActiveInput) => Promise<Result<ExpenseCategory>>
+    >()
+    expectTypeOf<StockFlowApi['expenses']['list']>().toEqualTypeOf<
+      (input: ExpenseListInput) => Promise<Result<ListPage<Expense>>>
+    >()
+    expectTypeOf<StockFlowApi['expenses']['summary']>().toEqualTypeOf<
+      (input: ExpenseSummaryInput) => Promise<Result<ExpenseSummary>>
+    >()
+    expectTypeOf<StockFlowApi['expenses']['get']>().toEqualTypeOf<
+      (input: number) => Promise<Result<Expense>>
+    >()
+    expectTypeOf<StockFlowApi['expenses']['create']>().toEqualTypeOf<
+      (input: ExpenseCreateInput) => Promise<Result<ExpenseSaveResult>>
+    >()
+    expectTypeOf<StockFlowApi['expenses']['update']>().toEqualTypeOf<
+      (input: ExpenseUpdateInput) => Promise<Result<Expense>>
+    >()
+    expectTypeOf<StockFlowApi['expenses']['void']>().toEqualTypeOf<
+      (input: number) => Promise<Result<Expense>>
     >()
   })
 })

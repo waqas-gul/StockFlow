@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
 import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
+import { ExpensesPage } from '@renderer/features/expenses/ExpensesPage'
 import { InvoiceDetailPage } from '@renderer/features/invoices/InvoiceDetailPage'
 import { InvoiceHistoryPage } from '@renderer/features/invoices/InvoiceHistoryPage'
 import { InvoicePrintPage } from '@renderer/features/invoices/InvoicePrintPage'
@@ -17,8 +18,8 @@ import { NotFoundPage } from './NotFoundPage'
 import { RouteErrorPage } from './RouteErrorPage'
 
 // Implemented sections: Products (Phase 5), Stock In and Stock Adjustments (Phase 6), Customers and Payments (Phase 7),
-// New Invoice (Phase 8B), Invoice History (Phase 9A) and Settings (Phase 4B). Every other section is a placeholder until
-// its phase replaces the Component.
+// New Invoice (Phase 8B), Invoice History (Phase 9A), Expenses (Phase 10) and Settings (Phase 4B). Every other section
+// is a placeholder until its phase replaces the Component.
 const implemented: Readonly<Record<string, React.ComponentType>> = {
   '/invoices/new': NewInvoicePage,
   '/invoices': InvoiceHistoryPage,
@@ -27,6 +28,7 @@ const implemented: Readonly<Record<string, React.ComponentType>> = {
   '/stock/adjustments': StockAdjustmentsPage,
   '/customers': CustomersPage,
   '/payments': PaymentsPage,
+  '/expenses': ExpensesPage,
   [settingsNavItem.path]: SettingsPage
 }
 

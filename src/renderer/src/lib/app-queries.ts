@@ -14,6 +14,13 @@ import type {
   ListPage
 } from '@shared/customers'
 import type {
+  Expense,
+  ExpenseCategory,
+  ExpenseListInput,
+  ExpenseSummary,
+  ExpenseSummaryInput
+} from '@shared/expenses'
+import type {
   InvoiceContext,
   InvoiceContextInput,
   InvoiceDetail,
@@ -392,5 +399,53 @@ export function refreshAfterCustomerChange(queryClient: QueryClient): void {
 export function refreshAfterStockChange(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.stock.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.products.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
+}
+
+/** `window.api.expenseCategories.list()`: every expense category, active or not. */
+export const expenseCategoriesQuery = queryOptions<ExpenseCategory[]>({
+  queryKey: queryKeys.expenseCategories,
+  queryFn: () => unwrap(window.api.expenseCategories.list())
+})
+
+/** `window.api.expenses.list(...)`: one page of expenses; the previous page stays shown while loading. */
+export function expenseListQuery(
+  input: ExpenseListInput
+): UseQueryOptions<
+  ListPage<Expense>,
+  Error,
+  ListPage<Expense>,
+  ReturnType<typeof queryKeys.expenses.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.expenses.list(input),
+    queryFn: () => unwrap(window.api.expenses.list(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.expenses.summary(...)`: active expense totals by group for a date range. */
+export function expenseSummaryQuery(
+  input: ExpenseSummaryInput
+): UseQueryOptions<
+  ExpenseSummary,
+  Error,
+  ExpenseSummary,
+  ReturnType<typeof queryKeys.expenses.summary>
+> {
+  return queryOptions({
+    queryKey: queryKeys.expenses.summary(input),
+    queryFn: () => unwrap(window.api.expenses.summary(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/**
+ * After an expense is saved, edited or voided, or a category changes: expense lists, totals and categories are read
+ * again, and settings (the currency decimal places lock once an expense exists). Nothing else depends on expenses.
+ */
+export function refreshAfterExpenseChange(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.expenseCategories })
   void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
 }

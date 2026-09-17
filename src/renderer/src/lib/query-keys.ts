@@ -1,4 +1,5 @@
 import type { CustomerLedgerInput, CustomerListInput, CustomerSearchInput } from '@shared/customers'
+import type { ExpenseListInput, ExpenseSummaryInput } from '@shared/expenses'
 import type { InvoiceContextInput, InvoiceListInput } from '@shared/invoices'
 import type { PaymentListInput } from '@shared/payments'
 import type { ProductListInput, ProductSearchInput } from '@shared/products'
@@ -52,5 +53,12 @@ export const queryKeys = {
     list: (input: InvoiceListInput) => ['invoices', 'list', input] as const,
     detail: (id: number) => ['invoices', 'detail', id] as const,
     print: (id: number) => ['invoices', 'print', id] as const
+  },
+  expenseCategories: ['expense-categories'] as const,
+  expenses: {
+    /** Every expense query: invalidated after an expense or category is saved, edited or voided. */
+    all: ['expenses'] as const,
+    list: (input: ExpenseListInput) => ['expenses', 'list', input] as const,
+    summary: (input: ExpenseSummaryInput) => ['expenses', 'summary', input] as const
   }
 }

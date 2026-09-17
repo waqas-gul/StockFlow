@@ -32,6 +32,15 @@ import {
   ProductSearchInputSchema,
   ProductUpdateSchema
 } from '@shared/products'
+import {
+  ExpenseCategoryCreateSchema,
+  ExpenseCategoryUpdateSchema,
+  ExpenseCreateSchema,
+  ExpenseIdSchema,
+  ExpenseListInputSchema,
+  ExpenseSummaryInputSchema,
+  ExpenseUpdateSchema
+} from '@shared/expenses'
 import { InvoicePrintInputSchema } from '@shared/invoice-print'
 import { EditableSettingsPatchSchema } from '@shared/settings'
 import {
@@ -65,6 +74,20 @@ import {
   setCustomerActive,
   updateCustomer
 } from '../services/customers.service'
+import {
+  createExpenseCategory,
+  listExpenseCategories,
+  setExpenseCategoryActive,
+  updateExpenseCategory
+} from '../services/expense-categories.service'
+import {
+  createExpense,
+  getExpense,
+  listExpenses,
+  summarizeExpenses,
+  updateExpense,
+  voidExpense
+} from '../services/expenses.service'
 import { readPrintableInvoice, type InvoicePrintService } from '../services/invoice-print.service'
 import { voidInvoice } from '../services/invoice-void.service'
 import {
@@ -278,6 +301,39 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       printable: { input: InvoiceIdSchema, run: (id) => readPrintableInvoice(database.get(), id) },
       print: { input: InvoicePrintInputSchema, run: (input) => printing.print(input) },
       savePdf: { input: InvoicePrintInputSchema, run: (input) => printing.savePdf(input) }
+    },
+    expenseCategories: {
+      list: { input: NO_INPUT, run: () => listExpenseCategories(database.get()) },
+      create: {
+        input: ExpenseCategoryCreateSchema,
+        run: (input) => createExpenseCategory(database.get(), input)
+      },
+      update: {
+        input: ExpenseCategoryUpdateSchema,
+        run: (input) => updateExpenseCategory(database.get(), input)
+      },
+      setActive: {
+        input: SetActiveSchema,
+        run: (input) => setExpenseCategoryActive(database.get(), input)
+      }
+    },
+    // Expense dates are checked against the main process's clock (today or earlier).
+    expenses: {
+      list: { input: ExpenseListInputSchema, run: (input) => listExpenses(database.get(), input) },
+      summary: {
+        input: ExpenseSummaryInputSchema,
+        run: (input) => summarizeExpenses(database.get(), input)
+      },
+      get: { input: ExpenseIdSchema, run: (id) => getExpense(database.get(), id) },
+      create: {
+        input: ExpenseCreateSchema,
+        run: (input) => createExpense(database.get(), input, ctx.now())
+      },
+      update: {
+        input: ExpenseUpdateSchema,
+        run: (input) => updateExpense(database.get(), input, ctx.now())
+      },
+      void: { input: ExpenseIdSchema, run: (id) => voidExpense(database.get(), id) }
     }
   }
 }

@@ -1149,6 +1149,227 @@ describe('invoices', () => {
   })
 })
 
+describe('expenses', () => {
+  // The fixture clock reads 14 Sep 2026.
+  function expenseInput(
+    categoryId: number,
+    overrides: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    return {
+      requestId: 'ipc-expense-0001',
+      expenseDate: '2026-09-14',
+      categoryId,
+      amountMinor: 125_050,
+      description: 'Electricity bill',
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  it('manages categories, and creates, lists, totals, edits and voids expenses through IPC', async () => {
+    const categories = (await call('expenseCategories:list')) as {
+      ok: true
+      data: Array<{ id: number; name: string; group: string }>
+    }
+    expect(categories.data.map((item) => [item.name, item.group])).toEqual([
+      ['Freight Paid', 'SHOP'],
+      ['Monthly / General Expenses', 'GENERAL'],
+      ['Purchase Cost Correction', 'GENERAL'],
+      ['Shop Expenses', 'SHOP']
+    ])
+    const shop = categories.data.find((item) => item.name === 'Shop Expenses')!.id
+    const general = categories.data.find((item) => item.group === 'GENERAL')!.id
+
+    const rent = (await call('expenseCategories:create', { name: ' Rent ', group: 'GENERAL' })) as {
+      ok: true
+      data: { id: number; name: string }
+    }
+    expect(rent.data.name).toBe('Rent')
+    await expect(
+      call('expenseCategories:create', { name: 'RENT', group: 'SHOP' })
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'DUPLICATE', message: 'Another expense category already uses this name.' }
+    })
+    await expect(
+      call('expenseCategories:update', { id: rent.data.id, name: 'Shop Rent', group: 'SHOP' })
+    ).resolves.toMatchObject({ ok: true, data: { name: 'Shop Rent', group: 'SHOP' } })
+    await expect(
+      call('expenseCategories:setActive', { id: rent.data.id, active: false })
+    ).resolves.toMatchObject({ ok: true, data: { isActive: false } })
+    await expect(
+      call('expenses:create', expenseInput(rent.data.id, { requestId: 'ipc-expense-0009' }))
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'FORBIDDEN_STATE', message: 'This expense category is inactive.' }
+    })
+
+    const created = (await call('expenses:create', expenseInput(shop))) as {
+      ok: true
+      data: { id: number; replayed: boolean }
+    }
+    expect(created).toMatchObject({ ok: true, data: { status: 'ACTIVE', replayed: false } })
+    await expect(call('expenses:create', expenseInput(shop))).resolves.toMatchObject({
+      ok: true,
+      data: { id: created.data.id, replayed: true }
+    })
+    await call(
+      'expenses:create',
+      expenseInput(general, {
+        requestId: 'ipc-expense-0002',
+        amountMinor: 4_500_000,
+        description: 'Rent'
+      })
+    )
+    await expect(
+      call(
+        'expenses:create',
+        expenseInput(shop, { requestId: 'ipc-expense-0003', expenseDate: '2026-09-15' })
+      )
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'DATE_NOT_ALLOWED',
+        message: 'The expense date cannot be after today (14-Sep-2026).',
+        fieldErrors: { expenseDate: ['The expense date cannot be after today (14-Sep-2026).'] }
+      }
+    })
+
+    await expect(
+      call('expenses:list', {
+        page: 1,
+        pageSize: 25,
+        search: 'electricity',
+        group: 'all',
+        status: 'all',
+        dateFrom: null,
+        dateTo: null
+      })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1, items: [{ id: created.data.id }] } })
+    await expect(call('expenses:summary', { dateFrom: null, dateTo: null })).resolves.toEqual({
+      ok: true,
+      data: {
+        dateFrom: null,
+        dateTo: null,
+        shopMinor: 125_050,
+        generalMinor: 4_500_000,
+        totalMinor: 4_625_050
+      }
+    })
+
+    await expect(
+      call('expenses:update', {
+        id: created.data.id,
+        expenseDate: '2026-09-14',
+        categoryId: shop,
+        amountMinor: 100_000,
+        description: 'Electricity bill',
+        currencyMinorDigits: 2
+      })
+    ).resolves.toMatchObject({ ok: true, data: { amountMinor: 100_000 } })
+    await expect(call('expenses:void', created.data.id)).resolves.toMatchObject({
+      ok: true,
+      data: { status: 'VOID' }
+    })
+    await expect(call('expenses:void', created.data.id)).resolves.toEqual({
+      ok: false,
+      error: { code: 'FORBIDDEN_STATE', message: 'Expense is already void.' }
+    })
+    await expect(call('expenses:get', created.data.id)).resolves.toMatchObject({
+      ok: true,
+      data: { status: 'VOID', amountMinor: 100_000 }
+    })
+    await expect(call('expenses:summary', { dateFrom: null, dateTo: null })).resolves.toMatchObject(
+      {
+        ok: true,
+        data: { shopMinor: 0, totalMinor: 4_500_000 }
+      }
+    )
+    // The first expense locks the currency decimal places.
+    await expect(call('settings:get')).resolves.toMatchObject({
+      ok: true,
+      data: { minorDigitsLocked: true }
+    })
+  })
+
+  it.each<[string, string, unknown]>([
+    ['a category without a group', 'expenseCategories:create', { name: 'Rent' }],
+    [
+      'a category in an unknown group',
+      'expenseCategories:create',
+      { name: 'Rent', group: 'MONTHLY' }
+    ],
+    [
+      'a category delete in disguise',
+      'expenseCategories:update',
+      { id: 1, name: 'X', group: 'SHOP', deleted: true }
+    ],
+    ['a list call with input', 'expenseCategories:list', { all: true }],
+    [
+      'an expense amount as text',
+      'expenses:create',
+      {
+        ...{
+          requestId: 'ipc-expense-0100',
+          expenseDate: '2026-09-01',
+          categoryId: 1,
+          description: null,
+          currencyMinorDigits: 2
+        },
+        amountMinor: '1,250.50'
+      }
+    ],
+    [
+      'a zero expense',
+      'expenses:create',
+      {
+        requestId: 'ipc-expense-0101',
+        expenseDate: '2026-09-01',
+        categoryId: 1,
+        amountMinor: 0,
+        description: null,
+        currencyMinorDigits: 2
+      }
+    ],
+    [
+      'an expense without a request id',
+      'expenses:create',
+      {
+        expenseDate: '2026-09-01',
+        categoryId: 1,
+        amountMinor: 100,
+        description: null,
+        currencyMinorDigits: 2
+      }
+    ],
+    [
+      'an edit that changes the status',
+      'expenses:update',
+      {
+        id: 1,
+        expenseDate: '2026-09-01',
+        categoryId: 1,
+        amountMinor: 100,
+        description: null,
+        currencyMinorDigits: 2,
+        status: 'ACTIVE'
+      }
+    ],
+    ['a void with an object', 'expenses:void', { id: 1 }],
+    ['a list without filters', 'expenses:list', { page: 1 }],
+    [
+      'a summary with a reversed range',
+      'expenses:summary',
+      { dateFrom: '2026-09-10', dateTo: '2026-09-01' }
+    ]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})
+
 describe('invoice printing: the renderer never supplies a path or a printer', () => {
   it.each(['invoices:print', 'invoices:savePdf'])(
     '%s refuses a path in place of its input or next to it',

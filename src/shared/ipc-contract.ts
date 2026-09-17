@@ -17,6 +17,18 @@ import type {
   ListPage
 } from './customers'
 import type {
+  Expense,
+  ExpenseCategory,
+  ExpenseCategoryCreateInput,
+  ExpenseCategoryUpdateInput,
+  ExpenseCreateInput,
+  ExpenseListInput,
+  ExpenseSaveResult,
+  ExpenseSummary,
+  ExpenseSummaryInput,
+  ExpenseUpdateInput
+} from './expenses'
+import type {
   InvoiceContext,
   InvoiceContextInput,
   InvoiceCreateInput,
@@ -226,6 +238,28 @@ export const ipcContract = Object.freeze({
     print: call<InvoicePrintInput, InvoicePrintResult>(),
     /** Saves the invoice shown in the print preview as a PDF, where the main process's Save dialog says. */
     savePdf: call<InvoicePrintInput, InvoicePdfResult>()
+  }),
+  expenseCategories: Object.freeze({
+    /** Every expense category (the seeded ones included), active or not, by name. Categories are never deleted. */
+    list: call<void, ExpenseCategory[]>(),
+    create: call<ExpenseCategoryCreateInput, ExpenseCategory>(),
+    /** Renames a category and/or moves it to the other group (Shop or Monthly / General). */
+    update: call<ExpenseCategoryUpdateInput, ExpenseCategory>(),
+    /** An inactive category stays on its expenses but cannot be chosen for another one. */
+    setActive: call<SetActiveInput, ExpenseCategory>()
+  }),
+  expenses: Object.freeze({
+    /** Expenses newest first, with search, group, status and date range filters. */
+    list: call<ExpenseListInput, ListPage<Expense>>(),
+    /** Active expense totals by group (Shop, Monthly / General) for a date range. */
+    summary: call<ExpenseSummaryInput, ExpenseSummary>(),
+    get: call<number, Expense>(),
+    /** Saves an expense dated today or earlier (a repeated request id returns the saved expense). */
+    create: call<ExpenseCreateInput, ExpenseSaveResult>(),
+    /** Edits an active expense. */
+    update: call<ExpenseUpdateInput, Expense>(),
+    /** Voids an active expense; it is never deleted. */
+    void: call<number, Expense>()
   })
 })
 
