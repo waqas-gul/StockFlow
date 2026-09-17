@@ -7,6 +7,7 @@ import {
   type StockFlowApi
 } from './ipc-contract'
 import type { Company, CompanyCreateInput, CompanyUpdateInput } from './companies'
+import type { DashboardData } from './dashboard'
 import type {
   BalanceAdjustmentInput,
   BalanceAdjustmentResult,
@@ -179,17 +180,18 @@ const CHANNELS = [
   'reports:productSales',
   'reports:stock',
   'reports:customerBalances',
-  'reports:expenses'
+  'reports:expenses',
+  'dashboard:get'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B, 10 and 11 calls', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B, 10 and 11 calls and the Dashboard call', () => {
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
-      domain: 'reports',
-      action: 'expenses',
-      channel: 'reports:expenses'
+      domain: 'dashboard',
+      action: 'get',
+      channel: 'dashboard:get'
     })
     // Reports are fixed, read-only calls: no generic query, SQL or export call.
     expect(ipcCalls.filter((call) => /query|sql|export|run|exec/i.test(call.action))).toEqual([])
@@ -228,6 +230,7 @@ describe('IPC contract', () => {
       | 'expenseCategories'
       | 'expenses'
       | 'reports'
+      | 'dashboard'
     >()
     expectTypeOf<StockFlowApi['app']['info']>().toEqualTypeOf<() => Promise<Result<AppInfo>>>()
     expectTypeOf<StockFlowApi['settings']['get']>().toEqualTypeOf<
@@ -424,6 +427,9 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['reports']['expenses']>().toEqualTypeOf<
       (input: ExpenseReportInput) => Promise<Result<ExpenseReport>>
+    >()
+    expectTypeOf<StockFlowApi['dashboard']['get']>().toEqualTypeOf<
+      () => Promise<Result<DashboardData>>
     >()
   })
 })

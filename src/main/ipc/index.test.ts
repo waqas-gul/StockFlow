@@ -1579,3 +1579,41 @@ describe('reports', () => {
     })
   })
 })
+
+describe('dashboard', () => {
+  it('answers the read-only overview for the main process business date', async () => {
+    // The fixture clock reads 14 Sep 2026.
+    await call('expenses:create', {
+      requestId: 'ipc-dashboard-0001',
+      expenseDate: '2026-09-10',
+      categoryId: 1,
+      amountMinor: 10_000,
+      description: null,
+      currencyMinorDigits: 2
+    })
+    const result = await call('dashboard:get')
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        today: '2026-09-14',
+        month: { dateFrom: '2026-09-01', dateTo: '2026-09-30' },
+        summary: { todaySalesMinor: 0, receivablesMinor: 0, lowStockCount: 0 },
+        expenseBreakdown: { shopMinor: 10_000, generalMinor: 0 },
+        recentExpenses: [{ amountMinor: 10_000 }],
+        gettingStarted: true
+      }
+    })
+    expect(result.ok && (result.data as { salesTrend: unknown[] }).salesTrend).toHaveLength(30)
+  })
+
+  it.each<[string, unknown]>([
+    ['a date', { today: '2020-01-01' }],
+    ['SQL', 'SELECT * FROM invoices'],
+    ['a path', { path: 'C:\\Windows\\x.db' }]
+  ])('refuses %s as input', async (_label, input) => {
+    await expect(call('dashboard:get', input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})

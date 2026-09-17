@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import type { Company } from '@shared/companies'
 import type { Product, ProductListItem, ProductListPage, ProductUnit } from '@shared/products'
@@ -108,7 +109,9 @@ function client(page?: ProductListPage): QueryClient {
 
 function render(node: React.ReactNode, queryClient = client()): string {
   return renderToStaticMarkup(
-    <QueryClientProvider client={queryClient}>{node}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{node}</MemoryRouter>
+    </QueryClientProvider>
   )
 }
 

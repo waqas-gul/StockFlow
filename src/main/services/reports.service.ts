@@ -1,4 +1,5 @@
 import { balanceState, type ListPage } from '@shared/customers'
+import { addDays } from '@shared/dates'
 import {
   DomainError,
   addMinor,
@@ -15,6 +16,7 @@ import {
   SalesReportInputSchema,
   type AdjustmentValueTotal,
   type CustomerBalancesReport,
+  type DailySales,
   type ExpenseCategoryTotal,
   type ExpenseReport,
   type InventoryCorrectionDetail,
@@ -200,7 +202,7 @@ function splitExpenses(categories: readonly ExpenseCategoryTotal[]): ExpenseSpli
 }
 
 /** Formats base quantities in each product's units ("2 Box + 5 Piece"), loading the units once. */
-function quantityFormatter(db: Db): (productId: number, qtyBase: number) => string {
+export function quantityFormatter(db: Db): (productId: number, qtyBase: number) => string {
   const units = new Map<
     number,
     Array<{ id: number; name: string; baseQty: number; isBase: boolean }>
@@ -429,6 +431,32 @@ function salesInvoicePage(
     page: filters.page,
     pageSize: filters.pageSize
   }
+}
+
+/**
+ * Every day of the period, oldest first, with the count and net goods sales of its POSTED invoices: the Sales report's
+ * figures split by invoice_date (a day without sales is zero).
+ */
+export function dailySalesReport(db: Db, input: unknown): DailySales[] {
+  const period = parseInput(ReportPeriodSchema, input)
+  return report(() => {
+    const rows = new Map(
+      db
+        .all<{ invoice_date: string; n: number; net: number | null }>(
+          `SELECT invoice_date, count(*) AS n, sum(net_minor) AS net
+           FROM invoices WHERE status = 'POSTED' AND invoice_date BETWEEN ? AND ?
+           GROUP BY invoice_date`,
+          [period.dateFrom, period.dateTo]
+        )
+        .map((row) => [row.invoice_date, row])
+    )
+    const days: DailySales[] = []
+    for (let date = period.dateFrom; date <= period.dateTo; date = addDays(date, 1)) {
+      const row = rows.get(date)
+      days.push({ date, invoiceCount: exact(row?.n), netGoodsSalesMinor: exact(row?.net) })
+    }
+    return days
+  })
 }
 
 // --- Product sales ------------------------------------------------------------------------------------------------------

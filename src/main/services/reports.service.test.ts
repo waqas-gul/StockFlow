@@ -31,6 +31,7 @@ import { createPayment } from './payments.service'
 import { createProduct, setProductActive } from './products.service'
 import {
   customerBalancesReport,
+  dailySalesReport,
   expenseReport,
   productSalesReport,
   profitLossReport,
@@ -767,6 +768,50 @@ describe('sales report', () => {
     const all = salesReport(db, { ...AUGUST, page: 2, pageSize: 2, status: 'all' })
     expect(all.invoices).toMatchObject({ total: 3, page: 2, pageSize: 2 })
     expect(all.invoices.items.map((item) => item.id)).toEqual([wrong.id])
+  })
+})
+
+describe('daily sales', () => {
+  const WEEK: ReportPeriod = { dateFrom: '2026-08-09', dateTo: '2026-08-15' }
+
+  it('gives every day of the period its posted invoices, zero days included, and agrees with the sales report', () => {
+    receive('2026-08-01', [[widget.id, piece(), 50, 60_000]])
+    post('2026-08-08', [pieces(4)])
+    // Net 200,000 − extra 10,000 = 190,000; freight is not goods sales.
+    post('2026-08-10', [pieces(2)], { extraDiscountMinor: 10_000, freightMinor: 5_000 })
+    post('2026-08-10', [pieces(1)], { customerId: bilal.id })
+    const wrong = post('2026-08-12', [pieces(3)])
+    post('2026-08-15', [pieces(1)])
+    pay(ali.id, '2026-08-15', 50_000)
+    post('2026-08-16', [pieces(6)])
+    // A void is dated today, after every other document.
+    voidInvoiceNow(wrong.id)
+
+    const days = dailySalesReport(db, WEEK)
+    expect(days).toEqual([
+      { date: '2026-08-09', invoiceCount: 0, netGoodsSalesMinor: 0 },
+      { date: '2026-08-10', invoiceCount: 2, netGoodsSalesMinor: 290_000 },
+      { date: '2026-08-11', invoiceCount: 0, netGoodsSalesMinor: 0 },
+      { date: '2026-08-12', invoiceCount: 0, netGoodsSalesMinor: 0 },
+      { date: '2026-08-13', invoiceCount: 0, netGoodsSalesMinor: 0 },
+      { date: '2026-08-14', invoiceCount: 0, netGoodsSalesMinor: 0 },
+      { date: '2026-08-15', invoiceCount: 1, netGoodsSalesMinor: 100_000 }
+    ])
+    const sales = salesReport(db, { ...WEEK, page: 1, pageSize: 1, status: 'POSTED' })
+    expect(days.reduce((sum, day) => sum + day.invoiceCount, 0)).toBe(sales.invoiceCount)
+    expect(days.reduce((sum, day) => sum + day.netGoodsSalesMinor, 0)).toBe(
+      sales.netGoodsSalesMinor
+    )
+  })
+
+  it('crosses month and year ends, and refuses an invalid period', () => {
+    expect(
+      dailySalesReport(db, { dateFrom: '2025-12-30', dateTo: '2026-01-02' }).map((day) => day.date)
+    ).toEqual(['2025-12-30', '2025-12-31', '2026-01-01', '2026-01-02'])
+    expect(dailySalesReport(db, { dateFrom: '2026-08-01', dateTo: '2026-08-01' })).toHaveLength(1)
+    expect(
+      failure(() => dailySalesReport(db, { dateFrom: '2026-08-02', dateTo: '2026-08-01' }))
+    ).toMatchObject({ code: 'VALIDATION' })
   })
 })
 

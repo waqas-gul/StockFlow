@@ -70,6 +70,23 @@ describe('Reports page', () => {
     expect(html).toContain('value="2026-09-30"')
   })
 
+  it('opens on the report a link asks for (the Dashboard’s View Sales Report)', () => {
+    const open = (entry: string): string => {
+      const queryClient = new QueryClient()
+      queryClient.setQueryData(queryKeys.settings, settings)
+      return renderToStaticMarkup(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[entry]}>
+            <ReportsPage today="2026-09-17" />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+    }
+    expect(open('/reports?tab=products')).toMatch(/aria-selected="true"[^>]*>Products</)
+    expect(open('/reports?tab=unknown')).toMatch(/aria-selected="true"[^>]*>Profit &amp; Loss</)
+    expect(open('/reports')).toMatch(/aria-selected="true"[^>]*>Profit &amp; Loss</)
+  })
+
   it('shows the P&L statement with gross profit, net operating profit and hidden zero stock lines', () => {
     const shown = text(
       render('profit-loss', (client) =>

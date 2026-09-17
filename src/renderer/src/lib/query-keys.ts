@@ -71,5 +71,7 @@ export const queryKeys = {
     stock: ['reports', 'stock'] as const,
     customerBalances: ['reports', 'customer-balances'] as const,
     expenses: (input: ExpenseReportInput) => ['reports', 'expenses', input] as const
-  }
+  },
+  /** The Dashboard overview: read again whenever it is shown (staleTime 0), so no change invalidates it. */
+  dashboard: ['dashboard'] as const
 }

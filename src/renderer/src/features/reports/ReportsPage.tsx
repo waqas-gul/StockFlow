@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router'
 import { localDateString } from '@shared/dates'
 import type { ReportPeriod } from '@shared/reports'
 import { Card, CardContent } from '@renderer/components/ui/card'
@@ -41,7 +42,8 @@ export type ReportTab = (typeof REPORT_TABS)[number]['id']
 
 /**
  * Reports (Phase 11): Profit & Loss, Sales, Products and Expenses for a date range, and current Stock and Customer
- * Balances. Every figure is derived from the saved records when shown; nothing here changes data.
+ * Balances. Every figure is derived from the saved records when shown; nothing here changes data. `?tab=<id>` (the
+ * Dashboard's View Sales Report) opens that report.
  */
 export function ReportsPage({
   initialTab = 'profit-loss',
@@ -52,7 +54,10 @@ export function ReportsPage({
   today?: string
 }): React.JSX.Element {
   const settings = useQuery(settingsQuery)
-  const [tab, setTab] = useState<ReportTab>(initialTab)
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<ReportTab>(
+    () => REPORT_TABS.find((item) => item.id === params.get('tab'))?.id ?? initialTab
+  )
   const [preset, setPreset] = useState<PeriodPreset>('THIS_MONTH')
   const thisMonth = presetPeriod('THIS_MONTH', today)!
   const [custom, setCustom] = useState<ReportPeriod>(thisMonth)

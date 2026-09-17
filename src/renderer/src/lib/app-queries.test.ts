@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppInfo } from '@shared/types/app-info'
 import { fail, ok } from '@shared/types/result'
 import { ApiError } from './api'
-import { appInfoQuery } from './app-queries'
+import { appInfoQuery, dashboardQuery } from './app-queries'
 import { queryKeys } from './query-keys'
 
 const info: AppInfo = {
@@ -42,5 +42,18 @@ describe('appInfoQuery', () => {
       }
     })
     await expect(runQuery()).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('dashboardQuery', () => {
+  it('reads the overview again whenever the Dashboard is shown, through window.api.dashboard.get()', async () => {
+    expect(dashboardQuery.queryKey).toEqual(queryKeys.dashboard)
+    expect(dashboardQuery.staleTime).toBe(0)
+    const getCall = vi.fn(async () => ok({ today: '2026-09-17' }))
+    vi.stubGlobal('window', { api: { dashboard: { get: getCall } } })
+    await expect((dashboardQuery.queryFn as () => Promise<unknown>)()).resolves.toEqual({
+      today: '2026-09-17'
+    })
+    expect(getCall).toHaveBeenCalledWith()
   })
 })

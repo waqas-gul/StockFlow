@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Ban, Eye, HandCoins, Search } from 'lucide-react'
+import { useSearchParams } from 'react-router'
 import { formatDisplayDate } from '@shared/dates'
 import {
   PAYMENT_METHODS,
@@ -27,6 +28,7 @@ import {
   TableHeader,
   TableRow
 } from '@renderer/components/ui/table'
+import { linkedId, wantsForm } from '@renderer/app/page-links'
 import { paymentListQuery, settingsQuery } from '@renderer/lib/app-queries'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
 import { formatAmount, type CurrencyFormat } from '../products/product-display'
@@ -37,7 +39,10 @@ import { ReceivePaymentDialog } from './ReceivePaymentDialog'
 
 export const PAYMENTS_PAGE_SIZE = 25
 
-/** Customers → Payments: every payment receipt, newest first, with filters, details, voids and Receive Payment. */
+/**
+ * Customers → Payments: every payment receipt, newest first, with filters, details, voids and Receive Payment.
+ * `?receive=1` opens Receive Payment and `?payment=<id>` shows that payment (the Dashboard's links).
+ */
 export function PaymentsPage(): React.JSX.Element {
   const settings = useQuery(settingsQuery)
   const [search, setSearch] = useState('')
@@ -46,8 +51,9 @@ export function PaymentsPage(): React.JSX.Element {
   const [status, setStatus] = useState<PaymentListInput['status']>('all')
   const [method, setMethod] = useState<PaymentListInput['method']>('all')
   const [page, setPage] = useState(1)
-  const [receiving, setReceiving] = useState(false)
-  const [openPayment, setOpenPayment] = useState<number | null>(null)
+  const [params] = useSearchParams()
+  const [receiving, setReceiving] = useState(() => wantsForm(params, 'receive'))
+  const [openPayment, setOpenPayment] = useState<number | null>(() => linkedId(params, 'payment'))
   const debouncedSearch = useDebouncedValue(search.trim(), 250)
   const rangeError =
     dateFrom !== '' && dateTo !== '' && dateFrom > dateTo

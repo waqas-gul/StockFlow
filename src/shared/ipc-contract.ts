@@ -3,6 +3,7 @@
 // No runtime imports: the sandboxed preload bundles this file and cannot load packages such as Zod.
 // Input validation lives with each handler in the main process (src/main/ipc).
 import type { Company, CompanyCreateInput, CompanyUpdateInput } from './companies'
+import type { DashboardData } from './dashboard'
 import type {
   BalanceAdjustmentInput,
   BalanceAdjustmentResult,
@@ -286,6 +287,11 @@ export const ipcContract = Object.freeze({
     customerBalances: call<void, CustomerBalancesReport>(),
     /** Active expense totals for a date range, by group and category, and one page of its expenses. */
     expenses: call<ExpenseReportInput, ExpenseReport>()
+  }),
+  // Read-only: the Dashboard overview, assembled from the reports and lists above in one call.
+  dashboard: Object.freeze({
+    /** Today, this month, balances, stock, the sales trend and recent activity, for the main process's business date. */
+    get: call<void, DashboardData>()
   })
 })
 

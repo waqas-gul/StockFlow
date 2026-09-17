@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2, ChevronLeft, ChevronRight, Package, Plus, Search } from 'lucide-react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import {
   DEACTIVATE_WITH_STOCK_WARNING,
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
+import { wantsForm } from '@renderer/app/page-links'
 import { companiesQuery, productListQuery, settingsQuery } from '@renderer/lib/app-queries'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
@@ -44,7 +46,10 @@ const notify: ProductNotifier = {
   warning: (message) => toast.warning(message)
 }
 
-/** Inventory → Products: the product list with search, filters, paging, and the add/edit and company dialogs. */
+/**
+ * Inventory → Products: the product list with search, filters, paging, and the add/edit and company dialogs. `?add=1`
+ * (the Dashboard's Add Product) opens Add Product.
+ */
 export function ProductsPage(): React.JSX.Element {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -65,7 +70,10 @@ export function ProductsPage(): React.JSX.Element {
   const settings = useQuery(settingsQuery)
   const companies = useQuery(companiesQuery)
 
-  const [editor, setEditor] = useState<ProductEditorTarget | null>(null)
+  const [params] = useSearchParams()
+  const [editor, setEditor] = useState<ProductEditorTarget | null>(() =>
+    wantsForm(params, 'add') ? { mode: 'create' } : null
+  )
   const [companiesOpen, setCompaniesOpen] = useState(false)
   const [confirming, setConfirming] = useState<ProductListItem | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)

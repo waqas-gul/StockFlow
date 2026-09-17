@@ -203,6 +203,13 @@ export interface SalesReport {
   readonly invoices: ListPage<SalesReportInvoice>
 }
 
+/** One business day's POSTED invoices: the Sales report's invoice count and net goods sales, per day. */
+export interface DailySales {
+  readonly date: string
+  readonly invoiceCount: number
+  readonly netGoodsSalesMinor: number
+}
+
 // --- Product sales ------------------------------------------------------------------------------------------------------
 
 export interface ProductSalesRow {

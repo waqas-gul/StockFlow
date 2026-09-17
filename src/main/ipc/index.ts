@@ -79,6 +79,7 @@ import {
   setCustomerActive,
   updateCustomer
 } from '../services/customers.service'
+import { dashboardData } from '../services/dashboard.service'
 import {
   createExpenseCategory,
   listExpenseCategories,
@@ -365,6 +366,10 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
         input: ExpenseReportInputSchema,
         run: (input) => expenseReport(database.get(), input)
       }
+    },
+    // Read-only; today is the main process's business date.
+    dashboard: {
+      get: { input: NO_INPUT, run: () => dashboardData(database.get(), ctx.now()) }
     }
   }
 }

@@ -87,7 +87,8 @@ describe('createApi (the preload bridge)', () => {
       'reports:productSales:function',
       'reports:stock:function',
       'reports:customerBalances:function',
-      'reports:expenses:function'
+      'reports:expenses:function',
+      'dashboard:get:function'
     ])
   })
 

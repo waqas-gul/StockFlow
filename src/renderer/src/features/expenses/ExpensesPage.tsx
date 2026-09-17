@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, Pencil, Plus, Search, Tags } from 'lucide-react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { formatDisplayDate, localDateString } from '@shared/dates'
 import {
@@ -29,6 +30,7 @@ import {
   TableHeader,
   TableRow
 } from '@renderer/components/ui/table'
+import { wantsForm } from '@renderer/app/page-links'
 import {
   expenseCategoriesQuery,
   expenseListQuery,
@@ -55,7 +57,8 @@ const notify: ExpenseNotifier = {
 
 /**
  * Expenses: Shop and Monthly / General expenses, with totals of the active expenses in the chosen date range, filters,
- * Add / Edit, Void and Manage Categories. Nothing here is profit and loss.
+ * Add / Edit, Void and Manage Categories. Nothing here is profit and loss. `?add=1` (the Dashboard's Add Expense) opens
+ * Add Expense.
  */
 export function ExpensesPage(): React.JSX.Element {
   const queryClient = useQueryClient()
@@ -68,7 +71,10 @@ export function ExpensesPage(): React.JSX.Element {
   const [status, setStatus] = useState<ExpenseListInput['status']>('ACTIVE')
   const [page, setPage] = useState(1)
   /** The Add / Edit dialog: null closed, { expense: null } adding. */
-  const [form, setForm] = useState<{ expense: Expense | null } | null>(null)
+  const [params] = useSearchParams()
+  const [form, setForm] = useState<{ expense: Expense | null } | null>(() =>
+    wantsForm(params, 'add') ? { expense: null } : null
+  )
   const [voiding, setVoiding] = useState<Expense | null>(null)
   const [managing, setManaging] = useState(false)
   const debouncedSearch = useDebouncedValue(search.trim(), 250)

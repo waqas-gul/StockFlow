@@ -27,6 +27,7 @@ import type {
   InvoiceListInput,
   InvoiceSummary
 } from '@shared/invoices'
+import type { DashboardData } from '@shared/dashboard'
 import type { PrintableInvoice } from '@shared/invoice-print'
 import type {
   CustomerBalancesReport,
@@ -540,3 +541,10 @@ export function expenseReportQuery(
     staleTime: 0
   })
 }
+
+/** `window.api.dashboard.get()`: the Dashboard overview, read again whenever the Dashboard is shown. */
+export const dashboardQuery = queryOptions<DashboardData>({
+  queryKey: queryKeys.dashboard,
+  queryFn: () => unwrap(window.api.dashboard.get()),
+  staleTime: 0
+})

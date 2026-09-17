@@ -11,6 +11,12 @@ export function localDateString(time: Date): string {
   return `${pad(time.getFullYear(), 4)}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}`
 }
 
+/** The business date `days` calendar days after `date` (before it when negative), both 'YYYY-MM-DD'. */
+export function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+
 /** True for 'YYYY-MM-DD' text naming a real calendar day (so 2026-02-30 is false). */
 export function isCalendarDate(text: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
