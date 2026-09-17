@@ -14,6 +14,8 @@
     "test": "node scripts/vitest-electron.mjs run",
     "test:watch": "node scripts/vitest-electron.mjs",
     "test:coverage": "node scripts/vitest-electron.mjs run --coverage",
+    "seed": "node scripts/seed.mjs",
+    "seed:verify": "node scripts/seed.mjs --verify",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",

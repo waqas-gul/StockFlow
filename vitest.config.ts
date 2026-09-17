@@ -32,7 +32,9 @@ export default defineConfig({
         'src/renderer/src/lib/api.ts',
         'src/renderer/src/components/common/AboutCard.tsx'
       ],
-      exclude: ['**/*.test.{ts,tsx}', '**/test-utils.ts'],
+      // The demo-data seed (`npm run seed`) is a development tool, not application code: nothing in the app
+      // imports it, and it is verified by running it and checking the integrity report it produces.
+      exclude: ['**/*.test.{ts,tsx}', '**/test-utils.ts', 'src/main/db/seed*.ts'],
       reporter: ['text', 'html'],
       thresholds: {
         statements: 95,
