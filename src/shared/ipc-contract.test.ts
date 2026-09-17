@@ -72,6 +72,17 @@ import type {
   ProductSearchItem,
   ProductUpdateInput
 } from './products'
+import type {
+  CustomerBalancesReport,
+  ExpenseReport,
+  ExpenseReportInput,
+  ProductSalesReport,
+  ProfitLossReport,
+  ReportPeriod,
+  SalesReport,
+  SalesReportInput,
+  StockReport
+} from './reports'
 import type { EditableSettingsPatch, SettingsView } from './settings'
 import type {
   AdjustmentListInput,
@@ -162,18 +173,26 @@ const CHANNELS = [
   'expenses:get',
   'expenses:create',
   'expenses:update',
-  'expenses:void'
+  'expenses:void',
+  'reports:profitLoss',
+  'reports:sales',
+  'reports:productSales',
+  'reports:stock',
+  'reports:customerBalances',
+  'reports:expenses'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B and 10 calls', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B, 10 and 11 calls', () => {
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
-      domain: 'expenses',
-      action: 'void',
-      channel: 'expenses:void'
+      domain: 'reports',
+      action: 'expenses',
+      channel: 'reports:expenses'
     })
+    // Reports are fixed, read-only calls: no generic query, SQL or export call.
+    expect(ipcCalls.filter((call) => /query|sql|export|run|exec/i.test(call.action))).toEqual([])
     // Expenses and their categories are never deleted: there is no delete call.
     expect(ipcCalls.filter((call) => /delete|remove/i.test(call.action))).toEqual([])
   })
@@ -208,6 +227,7 @@ describe('IPC contract', () => {
       | 'invoices'
       | 'expenseCategories'
       | 'expenses'
+      | 'reports'
     >()
     expectTypeOf<StockFlowApi['app']['info']>().toEqualTypeOf<() => Promise<Result<AppInfo>>>()
     expectTypeOf<StockFlowApi['settings']['get']>().toEqualTypeOf<
@@ -386,6 +406,24 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['expenses']['void']>().toEqualTypeOf<
       (input: number) => Promise<Result<Expense>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['profitLoss']>().toEqualTypeOf<
+      (input: ReportPeriod) => Promise<Result<ProfitLossReport>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['sales']>().toEqualTypeOf<
+      (input: SalesReportInput) => Promise<Result<SalesReport>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['productSales']>().toEqualTypeOf<
+      (input: ReportPeriod) => Promise<Result<ProductSalesReport>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['stock']>().toEqualTypeOf<
+      () => Promise<Result<StockReport>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['customerBalances']>().toEqualTypeOf<
+      () => Promise<Result<CustomerBalancesReport>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['expenses']>().toEqualTypeOf<
+      (input: ExpenseReportInput) => Promise<Result<ExpenseReport>>
     >()
   })
 })

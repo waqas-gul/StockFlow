@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Pencil, Plus, Power, PowerOff, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
+  EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE,
   EXPENSE_CATEGORY_NAME_MAX,
   EXPENSE_GROUPS,
   EXPENSE_GROUP_LABELS,
@@ -37,8 +38,12 @@ import {
 import { unwrap } from '@renderer/lib/api'
 import { expenseCategoriesQuery, refreshAfterExpenseChange } from '@renderer/lib/app-queries'
 import { errorMessage } from '@renderer/lib/format'
+import { categoryGroupLocked } from './expense-form'
 
-/** Manage Categories: add, rename, change group, activate or deactivate. Categories are never deleted. */
+/**
+ * Manage Categories: add, rename, activate or deactivate, and change the group of a category no expense has used yet.
+ * Categories are never deleted.
+ */
 export function ExpenseCategoriesDialog({
   open,
   onOpenChange
@@ -246,12 +251,20 @@ export function ExpenseCategoriesManager(): React.JSX.Element {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <GroupSelect
-                        value={editing.group}
-                        label={`Group for ${category.name}`}
-                        onChange={(group) => setEditing({ ...editing, group, error: null })}
-                      />
+                    <TableCell className="whitespace-normal">
+                      <div className="flex flex-col gap-1">
+                        <GroupSelect
+                          value={editing.group}
+                          label={`Group for ${category.name}`}
+                          disabled={categoryGroupLocked(category)}
+                          onChange={(group) => setEditing({ ...editing, group, error: null })}
+                        />
+                        {categoryGroupLocked(category) && (
+                          <p className="max-w-44 text-xs text-muted-foreground">
+                            {EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE}
+                          </p>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {category.expenseCount}
@@ -324,8 +337,7 @@ export function ExpenseCategoriesManager(): React.JSX.Element {
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        Changing a category&apos;s group also moves its existing expenses into that group&apos;s
-        totals.
+        {EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE} Its name and status can still change.
       </p>
     </div>
   )

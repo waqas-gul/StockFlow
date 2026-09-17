@@ -111,7 +111,7 @@ export const mainNavSections: NavSection[] = [
         path: '/reports',
         label: 'Reports',
         icon: ChartColumn,
-        placeholder: 'Reports will be implemented in a later phase.'
+        placeholder: 'Profit & Loss, sales, stock, customer balance and expense reports.'
       }
     ]
   }

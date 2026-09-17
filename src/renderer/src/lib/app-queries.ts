@@ -28,6 +28,17 @@ import type {
   InvoiceSummary
 } from '@shared/invoices'
 import type { PrintableInvoice } from '@shared/invoice-print'
+import type {
+  CustomerBalancesReport,
+  ExpenseReport,
+  ExpenseReportInput,
+  ProductSalesReport,
+  ProfitLossReport,
+  ReportPeriod,
+  SalesReport,
+  SalesReportInput,
+  StockReport
+} from '@shared/reports'
 import type { PaymentDetail, PaymentListInput, PaymentSummary } from '@shared/payments'
 import type {
   Product,
@@ -448,4 +459,84 @@ export function refreshAfterExpenseChange(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.expenseCategories })
   void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
+}
+
+// --- Reports (Phase 11) ----------------------------------------------------------------------------------------------
+// Derived from the saved records on request, so they are always read again when shown (staleTime 0).
+
+/** `window.api.reports.profitLoss(...)`. */
+export function profitLossQuery(
+  input: ReportPeriod
+): UseQueryOptions<
+  ProfitLossReport,
+  Error,
+  ProfitLossReport,
+  ReturnType<typeof queryKeys.reports.profitLoss>
+> {
+  return queryOptions({
+    queryKey: queryKeys.reports.profitLoss(input),
+    queryFn: () => unwrap(window.api.reports.profitLoss(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.reports.sales(...)`. */
+export function salesReportQuery(
+  input: SalesReportInput
+): UseQueryOptions<SalesReport, Error, SalesReport, ReturnType<typeof queryKeys.reports.sales>> {
+  return queryOptions({
+    queryKey: queryKeys.reports.sales(input),
+    queryFn: () => unwrap(window.api.reports.sales(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.reports.productSales(...)`. */
+export function productSalesQuery(
+  input: ReportPeriod
+): UseQueryOptions<
+  ProductSalesReport,
+  Error,
+  ProductSalesReport,
+  ReturnType<typeof queryKeys.reports.productSales>
+> {
+  return queryOptions({
+    queryKey: queryKeys.reports.productSales(input),
+    queryFn: () => unwrap(window.api.reports.productSales(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.reports.stock()`: current stock. */
+export const stockReportQuery = queryOptions<StockReport>({
+  queryKey: queryKeys.reports.stock,
+  queryFn: () => unwrap(window.api.reports.stock()),
+  staleTime: 0
+})
+
+/** `window.api.reports.customerBalances()`: current balances. */
+export const customerBalancesQuery = queryOptions<CustomerBalancesReport>({
+  queryKey: queryKeys.reports.customerBalances,
+  queryFn: () => unwrap(window.api.reports.customerBalances()),
+  staleTime: 0
+})
+
+/** `window.api.reports.expenses(...)`. */
+export function expenseReportQuery(
+  input: ExpenseReportInput
+): UseQueryOptions<
+  ExpenseReport,
+  Error,
+  ExpenseReport,
+  ReturnType<typeof queryKeys.reports.expenses>
+> {
+  return queryOptions({
+    queryKey: queryKeys.reports.expenses(input),
+    queryFn: () => unwrap(window.api.reports.expenses(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
 }

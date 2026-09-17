@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Expense, ExpenseCategory } from '@shared/expenses'
 import {
+  categoryGroupLocked,
   emptyExpenseForm,
   expenseFormSchema,
   expenseFormValues,
@@ -142,6 +143,12 @@ describe('expense form', () => {
   it('offers active categories, plus the inactive one an edited expense already has', () => {
     expect(selectableCategories([freight, rent, shop], null)).toEqual([shop])
     expect(selectableCategories([freight, rent, shop], rent.id)).toEqual([rent, shop])
+  })
+
+  it('locks the group of a category that any expense has used', () => {
+    expect(categoryGroupLocked(freight)).toBe(false)
+    expect(categoryGroupLocked(shop)).toBe(true)
+    expect(categoryGroupLocked(rent)).toBe(true)
   })
 
   it('maps main-process field errors onto the form fields', () => {

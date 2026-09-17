@@ -81,7 +81,13 @@ describe('createApi (the preload bridge)', () => {
       'expenses:get:function',
       'expenses:create:function',
       'expenses:update:function',
-      'expenses:void:function'
+      'expenses:void:function',
+      'reports:profitLoss:function',
+      'reports:sales:function',
+      'reports:productSales:function',
+      'reports:stock:function',
+      'reports:customerBalances:function',
+      'reports:expenses:function'
     ])
   })
 

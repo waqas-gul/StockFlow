@@ -10,6 +10,7 @@ import { InvoicePrintPage } from '@renderer/features/invoices/InvoicePrintPage'
 import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
+import { ReportsPage } from '@renderer/features/reports/ReportsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { StockAdjustmentsPage } from '@renderer/features/stock/StockAdjustmentsPage'
 import { StockInPage } from '@renderer/features/stock/StockInPage'
@@ -53,7 +54,8 @@ describe('navigation and routes', () => {
     '/stock/adjustments',
     '/customers',
     '/payments',
-    '/expenses'
+    '/expenses',
+    '/reports'
   ]
 
   it.each(expectedPaths.filter((path) => !implemented.includes(path)))(
@@ -97,6 +99,10 @@ describe('navigation and routes', () => {
 
   it('routes /expenses to the Phase 10 Expenses page', () => {
     expect(leafComponent('/expenses')).toBe(ExpensesPage)
+  })
+
+  it('routes /reports to the Phase 11 Reports page', () => {
+    expect(leafComponent('/reports')).toBe(ReportsPage)
   })
 
   it('titles a customer page with its section', () => {

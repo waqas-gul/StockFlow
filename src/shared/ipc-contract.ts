@@ -68,6 +68,17 @@ import type {
   ProductSearchItem,
   ProductUpdateInput
 } from './products'
+import type {
+  CustomerBalancesReport,
+  ExpenseReport,
+  ExpenseReportInput,
+  ProductSalesReport,
+  ProfitLossReport,
+  ReportPeriod,
+  SalesReport,
+  SalesReportInput,
+  StockReport
+} from './reports'
 import type { EditableSettingsPatch, SettingsView } from './settings'
 import type {
   AdjustmentListInput,
@@ -260,6 +271,21 @@ export const ipcContract = Object.freeze({
     update: call<ExpenseUpdateInput, Expense>(),
     /** Voids an active expense; it is never deleted. */
     void: call<number, Expense>()
+  }),
+  // Read-only reports, derived on request from the saved records. No call runs a query of the renderer's choosing.
+  reports: Object.freeze({
+    /** Profit & Loss for an inclusive business-date range. */
+    profitLoss: call<ReportPeriod, ProfitLossReport>(),
+    /** Posted-invoice sales totals for a date range, and one page of its invoices. */
+    sales: call<SalesReportInput, SalesReport>(),
+    /** Quantity, revenue, frozen COGS and profit per product for a date range. */
+    productSales: call<ReportPeriod, ProductSalesReport>(),
+    /** Current stock quantity and value of every product. */
+    stock: call<void, StockReport>(),
+    /** Current balance of every customer, with receivables and advances apart. */
+    customerBalances: call<void, CustomerBalancesReport>(),
+    /** Active expense totals for a date range, by group and category, and one page of its expenses. */
+    expenses: call<ExpenseReportInput, ExpenseReport>()
   })
 })
 

@@ -42,6 +42,11 @@ import {
   ExpenseUpdateSchema
 } from '@shared/expenses'
 import { InvoicePrintInputSchema } from '@shared/invoice-print'
+import {
+  ExpenseReportInputSchema,
+  ReportPeriodSchema,
+  SalesReportInputSchema
+} from '@shared/reports'
 import { EditableSettingsPatchSchema } from '@shared/settings'
 import {
   AdjustmentListInputSchema,
@@ -88,6 +93,14 @@ import {
   updateExpense,
   voidExpense
 } from '../services/expenses.service'
+import {
+  customerBalancesReport,
+  expenseReport,
+  productSalesReport,
+  profitLossReport,
+  salesReport,
+  stockReport
+} from '../services/reports.service'
 import { readPrintableInvoice, type InvoicePrintService } from '../services/invoice-print.service'
 import { voidInvoice } from '../services/invoice-void.service'
 import {
@@ -334,6 +347,24 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
         run: (input) => updateExpense(database.get(), input, ctx.now())
       },
       void: { input: ExpenseIdSchema, run: (id) => voidExpense(database.get(), id) }
+    },
+    // Read-only: every report is summed from the saved records on request.
+    reports: {
+      profitLoss: {
+        input: ReportPeriodSchema,
+        run: (input) => profitLossReport(database.get(), input)
+      },
+      sales: { input: SalesReportInputSchema, run: (input) => salesReport(database.get(), input) },
+      productSales: {
+        input: ReportPeriodSchema,
+        run: (input) => productSalesReport(database.get(), input)
+      },
+      stock: { input: NO_INPUT, run: () => stockReport(database.get()) },
+      customerBalances: { input: NO_INPUT, run: () => customerBalancesReport(database.get()) },
+      expenses: {
+        input: ExpenseReportInputSchema,
+        run: (input) => expenseReport(database.get(), input)
+      }
     }
   }
 }

@@ -1213,6 +1213,15 @@ describe('expenses', () => {
       ok: true,
       data: { id: created.data.id, replayed: true }
     })
+    await expect(
+      call('expenseCategories:update', { id: shop, name: 'Shop Expenses', group: 'GENERAL' })
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN_STATE',
+        message: 'Expense type cannot be changed after this category has been used.'
+      }
+    })
     await call(
       'expenses:create',
       expenseInput(general, {
@@ -1480,5 +1489,93 @@ describe('maintenance', () => {
         error: { code: 'FORBIDDEN_STATE', message: 'StockFlow is restarting.' }
       })
     }
+  })
+})
+
+describe('reports', () => {
+  const PERIOD = { dateFrom: '2026-09-01', dateTo: '2026-09-30' }
+
+  it('answers every report from the saved records through IPC', async () => {
+    // The fixture clock reads 14 Sep 2026.
+    for (const [requestId, categoryId, amountMinor] of [
+      ['ipc-report-0001', 1, 10_000],
+      ['ipc-report-0002', 2, 40_000],
+      ['ipc-report-0003', 4, 5_000]
+    ] as const) {
+      await call('expenses:create', {
+        requestId,
+        expenseDate: '2026-09-10',
+        categoryId,
+        amountMinor,
+        description: null,
+        currencyMinorDigits: 2
+      })
+    }
+    await expect(call('reports:profitLoss', PERIOD)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        goodsRevenueMinor: 0,
+        shopExpensesMinor: 10_000,
+        generalExpensesMinor: 40_000,
+        netOperatingProfitMinor: -50_000,
+        purchaseCostCorrectionsMinor: 5_000,
+        profitAfterDataCorrectionsMinor: -55_000
+      }
+    })
+    await expect(
+      call('reports:sales', { ...PERIOD, page: 1, pageSize: 25, status: 'POSTED' })
+    ).resolves.toMatchObject({ ok: true, data: { invoiceCount: 0, invoices: { total: 0 } } })
+    await expect(call('reports:productSales', PERIOD)).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [] }
+    })
+    await expect(call('reports:stock')).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [], totalValueMinor: 0 }
+    })
+    await expect(call('reports:customerBalances')).resolves.toMatchObject({
+      ok: true,
+      data: { receivablesMinor: 0, advancesMinor: 0, settledCount: 1 }
+    })
+    await expect(
+      call('reports:expenses', { ...PERIOD, page: 1, pageSize: 25, status: 'ACTIVE' })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { operatingMinor: 50_000, purchaseCostCorrectionsMinor: 5_000, expenses: { total: 3 } }
+    })
+  })
+
+  it.each<[string, string, unknown]>([
+    ['a period without an end', 'reports:profitLoss', { dateFrom: '2026-09-01' }],
+    [
+      'a period that ends before it starts',
+      'reports:profitLoss',
+      { dateFrom: '2026-09-30', dateTo: '2026-09-01' }
+    ],
+    [
+      'a period with an impossible date',
+      'reports:productSales',
+      { dateFrom: '2026-02-30', dateTo: '2026-03-01' }
+    ],
+    ['a period as text', 'reports:profitLoss', '2026-09'],
+    ['SQL instead of a period', 'reports:profitLoss', { ...PERIOD, sql: 'SELECT 1' }],
+    ['a sales report without paging', 'reports:sales', PERIOD],
+    [
+      'a sales report with an unknown status',
+      'reports:sales',
+      { ...PERIOD, page: 1, pageSize: 25, status: 'DRAFT' }
+    ],
+    [
+      'an expense report page too large',
+      'reports:expenses',
+      { ...PERIOD, page: 1, pageSize: 1000, status: 'ACTIVE' }
+    ],
+    ['a stock report with a filter', 'reports:stock', { where: '1=1' }],
+    ['a customer balances report with input', 'reports:customerBalances', { all: true }]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
   })
 })

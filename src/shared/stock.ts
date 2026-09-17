@@ -46,7 +46,10 @@ export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]
 /** IN adds stock, OUT removes it, VALUE changes only the inventory value (a receipt cost correction). */
 export type AdjustmentDirection = 'IN' | 'OUT' | 'VALUE'
 
-/** How the later Profit & Loss report treats an adjustment (plan §8.6, §13). No P&L is built in Phase 6. */
+/**
+ * How the Profit & Loss report (Phase 11) treats an adjustment (plan §8.6, §13): OPERATING_LOSS / OPERATING_GAIN count
+ * in Net Operating Profit; INVENTORY_DATA_CORRECTION is shown below it, under Data Corrections; NONE is not P&L.
+ */
 export type StockPnlTreatment =
   'NONE' | 'OPERATING_LOSS' | 'OPERATING_GAIN' | 'INVENTORY_DATA_CORRECTION'
 
@@ -101,7 +104,7 @@ export const ADJUSTMENT_REASON_INFO: Readonly<Record<AdjustmentReason, Adjustmen
       label: 'Receipt Cost Correction',
       description: 'A saved receipt recorded the wrong unit cost.',
       directions: ['VALUE'],
-      pnl: 'NONE'
+      pnl: 'INVENTORY_DATA_CORRECTION'
     },
     OTHER_CORRECTION: {
       label: 'Other Correction',

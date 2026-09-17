@@ -3,6 +3,7 @@ import type { ExpenseListInput, ExpenseSummaryInput } from '@shared/expenses'
 import type { InvoiceContextInput, InvoiceListInput } from '@shared/invoices'
 import type { PaymentListInput } from '@shared/payments'
 import type { ProductListInput, ProductSearchInput } from '@shared/products'
+import type { ExpenseReportInput, ReportPeriod, SalesReportInput } from '@shared/reports'
 import type { AdjustmentListInput, ReceiptListInput, StockCardInput } from '@shared/stock'
 
 /** TanStack Query keys for every query in the renderer, from one factory (plan §15). */
@@ -60,5 +61,15 @@ export const queryKeys = {
     all: ['expenses'] as const,
     list: (input: ExpenseListInput) => ['expenses', 'list', input] as const,
     summary: (input: ExpenseSummaryInput) => ['expenses', 'summary', input] as const
+  },
+  reports: {
+    /** Every report query. Reports are read again whenever they are shown (staleTime 0), so no change invalidates them. */
+    all: ['reports'] as const,
+    profitLoss: (input: ReportPeriod) => ['reports', 'profit-loss', input] as const,
+    sales: (input: SalesReportInput) => ['reports', 'sales', input] as const,
+    productSales: (input: ReportPeriod) => ['reports', 'product-sales', input] as const,
+    stock: ['reports', 'stock'] as const,
+    customerBalances: ['reports', 'customer-balances'] as const,
+    expenses: (input: ExpenseReportInput) => ['reports', 'expenses', input] as const
   }
 }

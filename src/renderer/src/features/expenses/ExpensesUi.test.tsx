@@ -226,6 +226,10 @@ describe('Manage Categories', () => {
     expect(html).toContain('aria-label="New category name"')
     expect(html).toContain('aria-label="New category group"')
     expect(shown).toContain('Add Category')
+    expect(shown).toContain(
+      'Expense type cannot be changed after this category has been used. Its name and status can still change.'
+    )
+    expect(shown).not.toContain('moves its existing expenses')
     expect(shown).not.toMatch(/\bDelete\b/)
   })
 })

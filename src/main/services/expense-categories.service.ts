@@ -1,5 +1,6 @@
 import {
   DUPLICATE_EXPENSE_CATEGORY_MESSAGE,
+  EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE,
   ExpenseCategoryCreateSchema,
   ExpenseCategoryUpdateSchema,
   type ExpenseCategory,
@@ -11,9 +12,10 @@ import { AppFailure, parseInput } from '../errors'
 
 /*
  * Expense categories over the `expense_categories` table (the four seeded ones included). A category is never deleted:
- * deactivating it only stops it being chosen for another expense. Its name and group may change; its expenses follow
- * it, since expenses keep no copy of their category. Names are unique regardless of letter case (the table's NOCASE
- * index covers English letters; the service also compares in lower case).
+ * deactivating it only stops it being chosen for another expense. Its name may always change. Its group (SHOP / GENERAL)
+ * may change only until an expense (active or void) first uses it: expenses keep no copy of their category's group, so
+ * locking it keeps every past expense in the group it was recorded in (Phase 11 reports rely on this). Names are unique
+ * regardless of letter case (the table's NOCASE index covers English letters; the service also compares in lower case).
  */
 
 interface CategoryRow {
@@ -48,11 +50,18 @@ export function createExpenseCategory(db: Db, input: unknown): ExpenseCategory {
   })
 }
 
-/** Renames a category and/or moves it to the other group. */
+/** Renames a category and/or moves an unused one to the other group. */
 export function updateExpenseCategory(db: Db, input: unknown): ExpenseCategory {
   const { id, name, group } = parseInput(ExpenseCategoryUpdateSchema, input)
   return db.transaction(() => {
-    readExpenseCategory(db, id)
+    const current = readExpenseCategory(db, id)
+    if (group !== current.group && current.expenseCount > 0) {
+      throw new AppFailure({
+        code: 'FORBIDDEN_STATE',
+        message: EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE,
+        fieldErrors: { group: [EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE] }
+      })
+    }
     assertNameFree(db, name, id)
     db.run('UPDATE expense_categories SET name = ?, grp = ? WHERE id = ?', [name, group, id])
     return readExpenseCategory(db, id)

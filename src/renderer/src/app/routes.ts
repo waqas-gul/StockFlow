@@ -9,6 +9,7 @@ import { InvoicePrintPage } from '@renderer/features/invoices/InvoicePrintPage'
 import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
+import { ReportsPage } from '@renderer/features/reports/ReportsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { StockAdjustmentsPage } from '@renderer/features/stock/StockAdjustmentsPage'
 import { StockInPage } from '@renderer/features/stock/StockInPage'
@@ -18,7 +19,8 @@ import { NotFoundPage } from './NotFoundPage'
 import { RouteErrorPage } from './RouteErrorPage'
 
 // Implemented sections: Products (Phase 5), Stock In and Stock Adjustments (Phase 6), Customers and Payments (Phase 7),
-// New Invoice (Phase 8B), Invoice History (Phase 9A), Expenses (Phase 10) and Settings (Phase 4B). Every other section
+// New Invoice (Phase 8B), Invoice History (Phase 9A), Expenses (Phase 10), Reports (Phase 11) and Settings (Phase 4B).
+// Every other section
 // is a placeholder until its phase replaces the Component.
 const implemented: Readonly<Record<string, React.ComponentType>> = {
   '/invoices/new': NewInvoicePage,
@@ -29,6 +31,7 @@ const implemented: Readonly<Record<string, React.ComponentType>> = {
   '/customers': CustomersPage,
   '/payments': PaymentsPage,
   '/expenses': ExpensesPage,
+  '/reports': ReportsPage,
   [settingsNavItem.path]: SettingsPage
 }
 

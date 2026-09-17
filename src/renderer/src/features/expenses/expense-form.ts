@@ -90,6 +90,11 @@ export function selectableCategories(
   return categories.filter((category) => category.isActive || category.id === currentCategoryId)
 }
 
+/** A category's group is locked once any expense (active or void) has used it; the main process enforces the same. */
+export function categoryGroupLocked(category: ExpenseCategory): boolean {
+  return category.expenseCount > 0
+}
+
 /** The main process's field errors as [form path, message] pairs. */
 export function serverExpenseErrors(
   fieldErrors: Readonly<Record<string, readonly string[]>> | undefined

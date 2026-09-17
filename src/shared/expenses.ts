@@ -50,7 +50,10 @@ export const ExpenseCategoryCreateSchema = z.strictObject({
 })
 export type ExpenseCategoryCreateInput = z.output<typeof ExpenseCategoryCreateSchema>
 
-/** `window.api.expenseCategories.update(...)`: rename and/or move to the other group. */
+/**
+ * `window.api.expenseCategories.update(...)`: rename, and move to the other group while no expense (active or void) has
+ * used the category yet. After its first use the group is locked.
+ */
 export const ExpenseCategoryUpdateSchema = z.strictObject({
   id: IdSchema,
   name: requiredText('category name', EXPENSE_CATEGORY_NAME_MAX),
@@ -63,13 +66,16 @@ export interface ExpenseCategory {
   readonly name: string
   readonly group: ExpenseGroup
   readonly isActive: boolean
-  /** Expenses (active or void) in this category. */
+  /** Expenses (active or void) in this category. Above zero, the group is locked. */
   readonly expenseCount: number
 }
 
 export const DUPLICATE_EXPENSE_CATEGORY_MESSAGE = 'Another expense category already uses this name.'
 export const INACTIVE_EXPENSE_CATEGORY_MESSAGE = 'This expense category is inactive.'
 export const VOID_EXPENSE_MESSAGE = 'Expense is already void.'
+/** A used category keeps its group, so past expenses never move between Shop and Monthly / General totals. */
+export const EXPENSE_CATEGORY_GROUP_LOCKED_MESSAGE =
+  'Expense type cannot be changed after this category has been used.'
 
 // --- Expenses -----------------------------------------------------------------------------------------------------------
 

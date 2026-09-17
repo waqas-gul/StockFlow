@@ -154,11 +154,18 @@ describe('expense categories', () => {
     expect(listExpenseCategories(db)).toHaveLength(5)
   })
 
-  it('renames a category, changes its group, and keeps its expenses on it', () => {
+  it('renames a category and changes the group of an unused one; its expenses keep it', () => {
     const rent = createExpenseCategory(db, { name: 'Rent', group: 'SHOP' })
+    // Never used: the group may still change.
+    expect(
+      updateExpenseCategory(db, { id: rent.id, name: 'Rent', group: 'GENERAL' })
+    ).toMatchObject({
+      group: 'GENERAL',
+      expenseCount: 0
+    })
     const expense = add({ categoryId: rent.id })
     // Renaming to itself in another letter case is not a duplicate.
-    expect(updateExpenseCategory(db, { id: rent.id, name: 'RENT', group: 'SHOP' }).name).toBe(
+    expect(updateExpenseCategory(db, { id: rent.id, name: 'RENT', group: 'GENERAL' }).name).toBe(
       'RENT'
     )
     expect(updateExpenseCategory(db, { id: rent.id, name: 'Shop Rent', group: 'GENERAL' })).toEqual(
@@ -177,6 +184,49 @@ describe('expense categories', () => {
     expect(
       failure(() => updateExpenseCategory(db, { id: 999, name: 'X', group: 'SHOP' }))
     ).toMatchObject({ code: 'NOT_FOUND', message: 'This expense category no longer exists.' })
+  })
+
+  it('locks the group of a category once any expense (active or void) uses it', () => {
+    const locked = {
+      code: 'FORBIDDEN_STATE',
+      message: 'Expense type cannot be changed after this category has been used.',
+      fieldErrors: { group: ['Expense type cannot be changed after this category has been used.'] }
+    }
+    const shop = categoryId('Shop Expenses')
+    const expense = add({ categoryId: shop })
+    expect(
+      failure(() =>
+        updateExpenseCategory(db, { id: shop, name: 'Shop Expenses', group: 'GENERAL' })
+      )
+    ).toEqual(locked)
+    // Nothing changed, not even the name sent with the refused group.
+    expect(
+      failure(() => updateExpenseCategory(db, { id: shop, name: 'Shop Costs', group: 'GENERAL' }))
+    ).toEqual(locked)
+    expect(listExpenseCategories(db).find((item) => item.id === shop)).toMatchObject({
+      name: 'Shop Expenses',
+      group: 'SHOP'
+    })
+    // A void expense still counts as a use; rename and deactivate stay allowed.
+    voidExpense(db, expense.id)
+    expect(
+      failure(() =>
+        updateExpenseCategory(db, { id: shop, name: 'Shop Expenses', group: 'GENERAL' })
+      )
+    ).toEqual(locked)
+    expect(
+      updateExpenseCategory(db, { id: shop, name: 'Shop Costs', group: 'SHOP' })
+    ).toMatchObject({
+      name: 'Shop Costs',
+      group: 'SHOP'
+    })
+    expect(setExpenseCategoryActive(db, { id: shop, active: false }).isActive).toBe(false)
+    expect(
+      failure(() => updateExpenseCategory(db, { id: shop, name: 'Shop Costs', group: 'GENERAL' }))
+    ).toEqual(locked)
+    expect(setExpenseCategoryActive(db, { id: shop, active: true }).isActive).toBe(true)
+    // Its historical classification is unchanged.
+    expect(getExpense(db, expense.id).categoryGroup).toBe('SHOP')
   })
 
   it('deactivates and reactivates a category, which stays on its expenses', () => {
@@ -548,25 +598,26 @@ describe('expense list and summary', () => {
     })
   })
 
-  it('moves totals when an expense is edited, voided, or its category changes group', () => {
+  it('moves totals when an expense is edited or voided; a used category keeps its group', () => {
     seed()
     const rent = list({ search: 'rent' }).items[0]
     updateExpense(db, { id: rent.id, ...editable(rent), amountMinor: 5_000_000 }, LATER)
     expect(summarizeExpenses(db, { dateFrom: null, dateTo: null }).generalMinor).toBe(7_000_000)
     voidExpense(db, rent.id)
-    expect(summarizeExpenses(db, { dateFrom: null, dateTo: null })).toMatchObject({
+    const before = summarizeExpenses(db, { dateFrom: null, dateTo: null })
+    expect(before).toMatchObject({
       generalMinor: 2_000_000,
       totalMinor: 2_125_050
     })
-    updateExpenseCategory(db, {
-      id: categoryId('Shop Expenses'),
-      name: 'Shop Expenses',
-      group: 'GENERAL'
-    })
-    expect(summarizeExpenses(db, { dateFrom: null, dateTo: null })).toMatchObject({
-      shopMinor: 0,
-      generalMinor: 2_125_050,
-      totalMinor: 2_125_050
-    })
+    expect(
+      thrown(() =>
+        updateExpenseCategory(db, {
+          id: categoryId('Shop Expenses'),
+          name: 'Shop Expenses',
+          group: 'GENERAL'
+        })
+      )
+    ).toBeInstanceOf(AppFailure)
+    expect(summarizeExpenses(db, { dateFrom: null, dateTo: null })).toEqual(before)
   })
 })
