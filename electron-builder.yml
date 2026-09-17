@@ -16,14 +16,24 @@ files:
   - '!scripts/**'
   # better-sqlite3 needs only lib/ and build/Release/better_sqlite3.node at runtime; these are its C sources.
   - '!node_modules/better-sqlite3/{deps,src}/**'
+  # zod's TypeScript sources and their tests; the app loads its compiled .cjs files.
+  - '!node_modules/zod/src/**'
 asarUnpack:
   - resources/**
+# V1 has no auto-updater: updates are a new installer run by hand. Without this, electron-builder writes update
+# metadata (resourcespp-update.yml, latest.yml) pointing at the Git remote.
+publish: null
 win:
   target:
     - nsis
   executableName: StockFlow
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
+  # A normal assisted installer (Next / Install / Finish) that installs for all users under Program Files. The data
+  # is per Windows user under %APPDATA%\StockFlow, never in the install folder.
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always

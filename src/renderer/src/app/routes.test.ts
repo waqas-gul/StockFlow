@@ -1,6 +1,6 @@
 import { matchRoutes } from 'react-router'
 import { describe, expect, it } from 'vitest'
-import { PlaceholderPage } from '@renderer/components/common/PlaceholderPage'
+import { DashboardPage } from '@renderer/features/dashboard/DashboardPage'
 import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailPage'
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
 import { ExpensesPage } from '@renderer/features/expenses/ExpensesPage'
@@ -45,25 +45,17 @@ describe('navigation and routes', () => {
     expect([...paths].sort()).toEqual([...expectedPaths].sort())
   })
 
-  const implemented = [
-    '/invoices/new',
-    '/invoices',
-    '/settings',
-    '/products',
-    '/stock/in',
-    '/stock/adjustments',
-    '/customers',
-    '/payments',
-    '/expenses',
-    '/reports'
-  ]
-
-  it.each(expectedPaths.filter((path) => !implemented.includes(path)))(
-    'routes %s to its placeholder page',
-    (path) => {
-      expect(leafComponent(path)).toBe(PlaceholderPage)
+  it('routes every section to a real page; none is a placeholder or the not-found page', () => {
+    for (const path of expectedPaths) {
+      const component = leafComponent(path)
+      expect(component, path).toBeDefined()
+      expect(component, path).not.toBe(NotFoundPage)
     }
-  )
+  })
+
+  it('routes / to the Dashboard', () => {
+    expect(leafComponent('/')).toBe(DashboardPage)
+  })
 
   it('routes /settings to the Settings page', () => {
     expect(leafComponent('/settings')).toBe(SettingsPage)

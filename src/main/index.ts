@@ -29,6 +29,7 @@ import {
   startupRecoveryReason,
   type StartupRecoveryReason
 } from './services/startup-recovery'
+import { guardUnsavedWorkOnClose } from './unsaved-close'
 import { createMainWindow } from './window'
 
 // Order matters: the single-instance lock below is keyed on the userData path.
@@ -224,6 +225,10 @@ Reference: ${ref} (the details are in the StockFlow log file).`
     )
 
     mainWindow = createMainWindow()
+    // An unsaved invoice: ask before the window closes (the shutdown backup then runs as usual on quit).
+    guardUnsavedWorkOnClose(mainWindow, (window, options) =>
+      dialog.showMessageBoxSync(window, options)
+    )
     mainWindow.on('closed', () => {
       mainWindow = null
     })

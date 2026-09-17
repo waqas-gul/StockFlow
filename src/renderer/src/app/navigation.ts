@@ -17,8 +17,8 @@ export type NavItem = {
   path: string
   label: string
   icon: LucideIcon
-  /** Shown on the placeholder page until the section is implemented. */
-  placeholder: string
+  /** What the section is for, shown on the Dashboard. */
+  description: string
   /** The section also owns the pages below its path (e.g. /customers/12). */
   matchChildren?: boolean
 }
@@ -35,7 +35,7 @@ export const mainNavSections: NavSection[] = [
         path: '/',
         label: 'Dashboard',
         icon: LayoutDashboard,
-        placeholder: 'The business overview will be implemented in a later phase.'
+        description: 'Shortcuts to every part of StockFlow.'
       }
     ]
   },
@@ -46,13 +46,13 @@ export const mainNavSections: NavSection[] = [
         path: '/invoices/new',
         label: 'New Invoice',
         icon: FilePlus,
-        placeholder: 'Invoice creation will be implemented in a later phase.'
+        description: 'Bill a customer: products, prices, discounts, freight and money received.'
       },
       {
         path: '/invoices',
         label: 'Invoice History',
         icon: ReceiptText,
-        placeholder: 'Invoice history will be implemented in a later phase.',
+        description: 'Find, reprint, save as PDF, update dispatch details or void saved invoices.',
         matchChildren: true
       }
     ]
@@ -64,19 +64,19 @@ export const mainNavSections: NavSection[] = [
         path: '/products',
         label: 'Products',
         icon: Package,
-        placeholder: 'Product management will be implemented in a later phase.'
+        description: 'Products, companies, units, prices and current stock.'
       },
       {
         path: '/stock/in',
         label: 'Stock In',
         icon: PackagePlus,
-        placeholder: 'Stock receiving will be implemented in a later phase.'
+        description: 'Record goods received from suppliers, at their cost.'
       },
       {
         path: '/stock/adjustments',
         label: 'Stock Adjustments',
         icon: ArrowUpDown,
-        placeholder: 'Stock adjustments will be implemented in a later phase.'
+        description: 'Opening stock, damage, expiry, count differences and corrections.'
       }
     ]
   },
@@ -87,14 +87,14 @@ export const mainNavSections: NavSection[] = [
         path: '/customers',
         label: 'Customers',
         icon: Users,
-        placeholder: 'Customer management will be implemented in a later phase.',
+        description: 'Customer accounts, balances and account history.',
         matchChildren: true
       },
       {
         path: '/payments',
         label: 'Payments',
         icon: HandCoins,
-        placeholder: 'Customer payments will be implemented in a later phase.'
+        description: 'Money received from customers.'
       }
     ]
   },
@@ -105,13 +105,13 @@ export const mainNavSections: NavSection[] = [
         path: '/expenses',
         label: 'Expenses',
         icon: Wallet,
-        placeholder: 'Expense tracking will be implemented in a later phase.'
+        description: 'Shop and monthly / general expenses.'
       },
       {
         path: '/reports',
         label: 'Reports',
         icon: ChartColumn,
-        placeholder: 'Profit & Loss, sales, stock, customer balance and expense reports.'
+        description: 'Profit & Loss, sales, products, stock, customer balances and expenses.'
       }
     ]
   }
@@ -121,7 +121,7 @@ export const settingsNavItem: NavItem = {
   path: '/settings',
   label: 'Settings',
   icon: Settings,
-  placeholder: 'Business settings and backups will be implemented in a later phase.'
+  description: 'Business details, invoice numbering, backups, restore and data checks.'
 }
 
 export const allNavItems: NavItem[] = [

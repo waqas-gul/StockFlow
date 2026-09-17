@@ -428,7 +428,7 @@ function saveUnits(
       (row.is_base === 1) !== unit.isBase
     ) {
       db.run('UPDATE product_units SET name = ?, base_qty = ?, is_base = 0 WHERE id = ?', [
-        `${row.id}`,
+        `\u0001${row.id}`,
         TEMPORARY_BASE_QTY + row.id,
         row.id
       ])

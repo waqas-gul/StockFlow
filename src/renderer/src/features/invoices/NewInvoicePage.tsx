@@ -23,6 +23,7 @@ import {
 } from '@renderer/lib/app-queries'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { singleFlight } from '@renderer/lib/single-flight'
+import { useUnloadGuard } from '@renderer/lib/unload-guard'
 import { customerLabel } from '../customers/customer-display'
 import type { CurrencyFormat } from '../products/product-display'
 import { newRequestId } from '../stock/stock-actions'
@@ -122,6 +123,8 @@ function InvoiceWorkspace({ currency }: { currency: CurrencyFormat }): React.JSX
     ({ currentLocation, nextLocation }) =>
       dirty && currentLocation.pathname !== nextLocation.pathname
   )
+  // Closing the window over a dirty draft asks in the main process first (Stay / Close and Discard).
+  useUnloadGuard(dirty)
 
   const errors = { ...(attempted ? summary.issues : {}), ...serverErrors }
 
