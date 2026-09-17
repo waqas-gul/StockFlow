@@ -4,6 +4,7 @@ import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailP
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
 import { InvoiceDetailPage } from '@renderer/features/invoices/InvoiceDetailPage'
 import { InvoiceHistoryPage } from '@renderer/features/invoices/InvoiceHistoryPage'
+import { InvoicePrintPage } from '@renderer/features/invoices/InvoicePrintPage'
 import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
@@ -39,6 +40,12 @@ const sectionRoutes: RouteObject[] = [
 ]
 
 export const routes: RouteObject[] = [
+  // The print preview (Phase 9B) shows the invoice as it prints, so it has no sidebar or top bar.
+  {
+    path: '/invoices/:invoiceId/print',
+    Component: InvoicePrintPage,
+    ErrorBoundary: RouteErrorPage
+  },
   {
     path: '/',
     Component: AppShell,

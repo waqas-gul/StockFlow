@@ -7,6 +7,7 @@ import type { DataSafetyContext } from './db/context'
 import { migrations } from './db/migrations'
 import {
   createBackupDialogs,
+  createPdfDialogs,
   createRecoveryDialogs,
   openFolderInExplorer,
   relaunchApp
@@ -14,10 +15,12 @@ import {
 import { registerIpc } from './ipc'
 import { createErrorRef, createFileLogger } from './logging'
 import { configureUserDataPath, getDataPaths } from './paths'
+import { createPrintTarget } from './print-window'
 import { denyAllPermissions, enforceSecurityDefaults, isTrustedIpcSender } from './security'
 import { AutomaticBackups } from './services/auto-backup'
 import { BackupStatusStore } from './services/backup-status'
 import { BackupService } from './services/backup.service'
+import { InvoicePrintService } from './services/invoice-print.service'
 import { LiveDatabase } from './services/live-database'
 import { OperationLock } from './services/operation-lock'
 import { RestoreService } from './services/restore.service'
@@ -191,6 +194,17 @@ Reference: ${ref} (the details are in the StockFlow log file).`
       restart: restartAfterRestore
     })
 
+    // Invoice Print and Save as PDF: the main window's print preview, the system print dialog and a Save dialog.
+    const printing = new InvoicePrintService({
+      database,
+      log,
+      target: createPrintTarget(() => mainWindow),
+      dialogs: createPdfDialogs(() => mainWindow),
+      documentsDir: app.getPath('documents'),
+      appDataPath: app.getPath('appData'),
+      homePath: app.getPath('home')
+    })
+
     registerIpc(
       ipcMain,
       {
@@ -203,6 +217,7 @@ Reference: ${ref} (the details are in the StockFlow log file).`
         database,
         backups,
         restore,
+        printing,
         ctx
       },
       { isTrustedSender: isTrustedIpcSender, log }

@@ -50,6 +50,7 @@ export const queryKeys = {
     all: ['invoices'] as const,
     context: (input: InvoiceContextInput) => ['invoices', 'context', input] as const,
     list: (input: InvoiceListInput) => ['invoices', 'list', input] as const,
-    detail: (id: number) => ['invoices', 'detail', id] as const
+    detail: (id: number) => ['invoices', 'detail', id] as const,
+    print: (id: number) => ['invoices', 'print', id] as const
   }
 }

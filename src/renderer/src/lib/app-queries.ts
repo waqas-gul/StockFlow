@@ -20,6 +20,7 @@ import type {
   InvoiceListInput,
   InvoiceSummary
 } from '@shared/invoices'
+import type { PrintableInvoice } from '@shared/invoice-print'
 import type { PaymentDetail, PaymentListInput, PaymentSummary } from '@shared/payments'
 import type {
   Product,
@@ -340,6 +341,25 @@ export function invoiceQuery(
   return queryOptions({
     queryKey: queryKeys.invoices.detail(id),
     queryFn: () => unwrap(window.api.invoices.get(id)),
+    staleTime: 0
+  })
+}
+
+/**
+ * `window.api.invoices.printable(id)`: the printed invoice, always read fresh (its dispatch details, status or the
+ * business settings may have changed since).
+ */
+export function printableInvoiceQuery(
+  id: number
+): UseQueryOptions<
+  PrintableInvoice,
+  Error,
+  PrintableInvoice,
+  ReturnType<typeof queryKeys.invoices.print>
+> {
+  return queryOptions({
+    queryKey: queryKeys.invoices.print(id),
+    queryFn: () => unwrap(window.api.invoices.printable(id)),
     staleTime: 0
   })
 }

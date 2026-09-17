@@ -1,0 +1,394 @@
+/* The printed invoice (Phase 9B). Plain CSS rather than the app's Tailwind theme: it is a paper document, not a screen.
+   Black on white with thin borders and no fills or gradients, so it prints clearly on any black-and-white printer with
+   little ink. Sizes are in millimetres and points, so the preview sheet and the paper match. The page size and margins
+   are set per invoice by the @page rule next to the document (invoicePageCss) and match the sheet padding here, plus a
+   0.5 mm inset at each side: a printer that scales the page to its own paper clips the last fraction of a millimetre
+   at the edge, which would cut off the right border of the tables. */
+
+.ip-page {
+  height: 100%;
+  overflow: auto;
+  background: #d5d9df;
+}
+
+.ip-canvas {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 48px;
+}
+
+.ip-sheet {
+  --ip-font: 9pt;
+  --ip-small: 7.5pt;
+  --ip-cell: 1.1mm 1.6mm;
+  position: relative;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 12mm 12.5mm 14mm;
+  background: #fff;
+  color: #000;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: var(--ip-font);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+
+.ip-sheet[data-paper-size='A5'] {
+  --ip-font: 7.5pt;
+  --ip-small: 6.5pt;
+  --ip-cell: 0.8mm 1.1mm;
+  width: 148mm;
+  min-height: 210mm;
+  padding: 8mm 8.5mm 10mm;
+}
+
+.ip-sheet *,
+.ip-sheet *::before,
+.ip-sheet *::after {
+  border-color: #000;
+}
+
+/* VOID: a large light word across every page, and a heading with the date and reason. */
+.ip-watermark {
+  position: absolute;
+  top: 38%;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  text-align: center;
+  font-size: 120pt;
+  font-weight: 700;
+  letter-spacing: 6mm;
+  color: rgb(0 0 0 / 0.1);
+  transform: rotate(-30deg);
+  pointer-events: none;
+}
+
+.ip-sheet[data-paper-size='A5'] .ip-watermark {
+  font-size: 84pt;
+  letter-spacing: 4mm;
+}
+
+.ip-void {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  margin-top: 3mm;
+  padding: 1.5mm 3mm;
+  border: 1.5pt solid;
+  break-inside: avoid;
+}
+
+.ip-void p {
+  margin: 0;
+}
+
+.ip-void-title {
+  font-size: 16pt;
+  font-weight: 700;
+  letter-spacing: 2pt;
+}
+
+/* Header: business name, then the document title with its number, date and code. */
+.ip-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6mm;
+  padding-bottom: 2.5mm;
+  border-bottom: 1.5pt solid;
+}
+
+.ip-business {
+  margin: 0;
+  font-size: 18pt;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.ip-doc {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.ip-title {
+  margin: 0 0 1.2mm;
+  font-size: 14pt;
+  font-weight: 700;
+  letter-spacing: 1.5pt;
+}
+
+.ip-sheet[data-paper-size='A5'] .ip-business {
+  font-size: 14pt;
+}
+
+.ip-sheet[data-paper-size='A5'] .ip-title {
+  font-size: 11pt;
+}
+
+.ip-meta {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.3mm 3mm;
+  margin: 0;
+}
+
+.ip-field {
+  display: contents;
+}
+
+.ip-meta dt,
+.ip-fields dt {
+  color: #333;
+}
+
+.ip-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Bill To and Dispatch. */
+.ip-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  margin-top: 3.5mm;
+  break-inside: avoid;
+}
+
+.ip-box {
+  padding: 1.8mm 2.5mm;
+  border: 0.75pt solid;
+}
+
+.ip-box-title {
+  margin: 0 0 1mm;
+  font-size: var(--ip-small);
+  font-weight: 700;
+  letter-spacing: 0.5pt;
+  text-transform: uppercase;
+}
+
+.ip-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5mm 3mm;
+  margin: 0;
+}
+
+.ip-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ip-blank {
+  min-height: 1.2em;
+  border-bottom: 0.5pt solid;
+}
+
+.ip-strong {
+  font-weight: 700;
+}
+
+.ip-note {
+  margin: 3mm 0 1mm;
+  text-align: right;
+  font-size: var(--ip-small);
+  color: #333;
+}
+
+/* Items: the column headings repeat on every page, and a row never splits across pages. Borders are drawn inside the
+   table's box (separate borders, no spacing): collapsed outer borders stick out by half their width, and a printer that
+   scales the page to its paper cuts that off. */
+.ip-items {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-left: 0.5pt solid;
+}
+
+.ip-items th,
+.ip-items td {
+  padding: var(--ip-cell);
+  border-right: 0.5pt solid;
+  border-bottom: 0.5pt solid;
+  vertical-align: top;
+}
+
+.ip-items thead {
+  display: table-header-group;
+}
+
+.ip-items thead th {
+  border-top: 0.5pt solid;
+  border-bottom-width: 1pt;
+  font-size: var(--ip-small);
+  font-weight: 700;
+  vertical-align: bottom;
+  overflow-wrap: normal;
+}
+
+.ip-items tr {
+  break-inside: avoid;
+}
+
+.ip-text {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.ip-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ip-items thead th.ip-num {
+  white-space: normal;
+}
+
+.ip-nowrap {
+  white-space: nowrap;
+}
+
+.ip-sub {
+  font-size: var(--ip-small);
+  color: #333;
+}
+
+/* Totals, amount in words and signatures stay together. */
+.ip-closing {
+  margin-top: 3.5mm;
+  break-inside: avoid;
+}
+
+.ip-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5mm;
+  align-items: start;
+}
+
+.ip-words {
+  padding: 1.8mm 2.5mm;
+  border: 0.75pt solid;
+}
+
+.ip-words p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ip-totals {
+  min-width: 62mm;
+  border-collapse: collapse;
+}
+
+.ip-sheet[data-paper-size='A5'] .ip-totals {
+  min-width: 50mm;
+}
+
+.ip-totals th,
+.ip-totals td {
+  padding: 0.7mm 2mm;
+  border-bottom: 0.5pt solid;
+  white-space: nowrap;
+}
+
+.ip-totals th {
+  text-align: left;
+  font-weight: 400;
+}
+
+.ip-totals td {
+  text-align: right;
+}
+
+.ip-totals .ip-strong th,
+.ip-totals .ip-strong td {
+  font-weight: 700;
+}
+
+.ip-totals .ip-grand th,
+.ip-totals .ip-grand td {
+  border-top: 1.5pt solid;
+  border-bottom: 1.5pt solid;
+  font-size: calc(var(--ip-font) + 1pt);
+  font-weight: 700;
+}
+
+.ip-sign {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10mm;
+  margin-top: 11mm;
+}
+
+.ip-sheet[data-paper-size='A5'] .ip-sign {
+  margin-top: 8mm;
+}
+
+.ip-sign-field {
+  display: flex;
+  align-items: flex-end;
+  gap: 2mm;
+}
+
+.ip-sign-label {
+  white-space: nowrap;
+}
+
+.ip-sign-line {
+  flex: 1;
+  min-height: 1.3em;
+  padding: 0 1mm;
+  border-bottom: 0.75pt solid;
+}
+
+.ip-brand {
+  margin: 4mm 0 0;
+  text-align: center;
+  font-size: 6pt;
+  color: #666;
+}
+
+/* Paper: only the invoice, flowing over as many pages as it needs. */
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .ip-page {
+    height: auto;
+    overflow: visible;
+    background: none;
+  }
+
+  .ip-canvas {
+    display: block;
+    padding: 0;
+  }
+
+  .ip-sheet,
+  .ip-sheet[data-paper-size='A5'] {
+    width: auto;
+    min-height: 0;
+    padding: 0 0.5mm;
+    box-shadow: none;
+  }
+
+  .ip-watermark {
+    position: fixed;
+    top: 42%;
+  }
+
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}

@@ -9,6 +9,10 @@ import { wholeNumber } from './validation'
  */
 
 const CURRENCY_CODE_MESSAGE = 'Use a three-letter currency code, such as PKR.'
+
+/** The paper an invoice is printed on. */
+export const PAPER_SIZES = ['A4', 'A5'] as const
+export type PaperSize = (typeof PAPER_SIZES)[number]
 const INVOICE_PREFIX_MESSAGE = 'Use up to 12 letters, digits, dots, dashes or underscores.'
 
 export const SETTING_SCHEMAS = {
@@ -31,7 +35,7 @@ export const SETTING_SCHEMAS = {
     .regex(/^[A-Za-z0-9._-]{0,12}$/, INVOICE_PREFIX_MESSAGE),
   'invoice.padding': wholeNumber(1, 10),
   'invoice.startNumber': wholeNumber(1, 999_999_999),
-  'invoice.paperSize': z.enum(['A4', 'A5'], { error: 'Choose A4 or A5.' }),
+  'invoice.paperSize': z.enum(PAPER_SIZES, { error: 'Choose A4 or A5.' }),
   'backup.autoEnabled': z.boolean(),
   'backup.keepDaily': z.number().int().min(1).max(365),
   'backup.keepMonthly': z.number().int().min(0).max(120)

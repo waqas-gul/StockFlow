@@ -30,6 +30,12 @@ import type {
   InvoiceVoidResult
 } from './invoices'
 import type {
+  InvoicePdfResult,
+  InvoicePrintInput,
+  InvoicePrintResult,
+  PrintableInvoice
+} from './invoice-print'
+import type {
   DuplicatePaymentCheck,
   PaymentCreateInput,
   PaymentDetail,
@@ -95,7 +101,8 @@ function call<Input, Output>(): IpcCall<Input, Output> {
  * Every call the renderer may make, as domain → action. The channel is `<domain>:<action>` and the renderer
  * calls it as `window.api.<domain>.<action>(input)`. Nothing outside this map is reachable over IPC.
  *
- * No call takes a file-system path: the main process opens the file dialogs and keeps the paths they return.
+ * No call takes a file-system path or a printer: the main process opens the file and print dialogs and keeps what
+ * they return.
  */
 export const ipcContract = Object.freeze({
   app: Object.freeze({
@@ -212,7 +219,13 @@ export const ipcContract = Object.freeze({
     /** Changes the dispatch details (Bilty No, Transport, Adda) of a posted invoice, logging each change. */
     updateDispatch: call<InvoiceDispatchUpdateInput, InvoiceDispatchResult>(),
     /** Voids a posted invoice, dated today: exact stock and account reversals in one transaction. */
-    void: call<InvoiceVoidInput, InvoiceVoidResult>()
+    void: call<InvoiceVoidInput, InvoiceVoidResult>(),
+    /** The printed invoice: its saved snapshots, current dispatch details and total in words, from one read. */
+    printable: call<number, PrintableInvoice>(),
+    /** Prints the invoice shown in the print preview: the main process opens the system print dialog. */
+    print: call<InvoicePrintInput, InvoicePrintResult>(),
+    /** Saves the invoice shown in the print preview as a PDF, where the main process's Save dialog says. */
+    savePdf: call<InvoicePrintInput, InvoicePdfResult>()
   })
 })
 

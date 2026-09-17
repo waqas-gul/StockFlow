@@ -66,9 +66,14 @@ export function canConfirmVoid(plan: VoidPlan, reason: string, moneyReturned: bo
 
 /**
  * A base quantity in the units saved on the line, largest first ("1 Box + 2 Piece"). Free scheme goods are saved as a
- * base quantity only, so what the line's saved units cannot express is given in base units.
+ * base quantity only, so what the line's saved units cannot express is given in base units. `label` names a unit
+ * (its saved name by default).
  */
-export function savedQuantityText(qtyBase: number, quantities: readonly InvoiceQuantity[]): string {
+export function savedQuantityText<Unit extends Pick<InvoiceQuantity, 'unitBaseQty' | 'unitName'>>(
+  qtyBase: number,
+  quantities: readonly Unit[],
+  label: (unit: Unit) => string = (unit) => unit.unitName
+): string {
   const units = [...new Map(quantities.map((row) => [row.unitBaseQty, row])).values()].sort(
     (a, b) => b.unitBaseQty - a.unitBaseQty
   )
@@ -77,7 +82,7 @@ export function savedQuantityText(qtyBase: number, quantities: readonly InvoiceQ
   for (const unit of units) {
     const count = Math.floor(rest / unit.unitBaseQty)
     if (count > 0) {
-      parts.push(`${count.toLocaleString('en-US')} ${unit.unitName}`)
+      parts.push(`${count.toLocaleString('en-US')} ${label(unit)}`)
       rest -= count * unit.unitBaseQty
     }
   }

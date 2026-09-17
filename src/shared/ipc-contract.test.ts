@@ -34,6 +34,12 @@ import type {
   InvoiceVoidResult
 } from './invoices'
 import type {
+  InvoicePdfResult,
+  InvoicePrintInput,
+  InvoicePrintResult,
+  PrintableInvoice
+} from './invoice-print'
+import type {
   DuplicatePaymentCheck,
   PaymentCreateInput,
   PaymentDetail,
@@ -131,17 +137,20 @@ const CHANNELS = [
   'invoices:list',
   'invoices:get',
   'invoices:updateDispatch',
-  'invoices:void'
+  'invoices:void',
+  'invoices:printable',
+  'invoices:print',
+  'invoices:savePdf'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B and 9A calls', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A and 9B calls', () => {
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
       domain: 'invoices',
-      action: 'void',
-      channel: 'invoices:void'
+      action: 'savePdf',
+      channel: 'invoices:savePdf'
     })
   })
 
@@ -312,6 +321,15 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['invoices']['void']>().toEqualTypeOf<
       (input: InvoiceVoidInput) => Promise<Result<InvoiceVoidResult>>
+    >()
+    expectTypeOf<StockFlowApi['invoices']['printable']>().toEqualTypeOf<
+      (input: number) => Promise<Result<PrintableInvoice>>
+    >()
+    expectTypeOf<StockFlowApi['invoices']['print']>().toEqualTypeOf<
+      (input: InvoicePrintInput) => Promise<Result<InvoicePrintResult>>
+    >()
+    expectTypeOf<StockFlowApi['invoices']['savePdf']>().toEqualTypeOf<
+      (input: InvoicePrintInput) => Promise<Result<InvoicePdfResult>>
     >()
   })
 })

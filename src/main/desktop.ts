@@ -7,12 +7,13 @@ import {
   type SaveDialogOptions
 } from 'electron'
 import type { BackupDialogs } from './services/backup.service'
+import type { PdfDialogs } from './services/invoice-print.service'
 import type { RecoveryDialogs } from './services/startup-recovery'
 
 /*
- * The Electron side of Settings → Backup & Restore and of recovery mode: the file dialogs, message boxes, opening the
- * backup folder and relaunching. Only the main process calls these, with paths it chose itself; nothing here is
- * reachable from the renderer except through the fixed backup calls of the IPC contract.
+ * The Electron side of Settings → Backup & Restore, of recovery mode and of Save as PDF: the file dialogs, message
+ * boxes, opening the backup folder and relaunching. Only the main process calls these, with paths it chose itself;
+ * nothing here is reachable from the renderer except through the fixed backup and PDF calls of the IPC contract.
  */
 
 const BACKUP_FILTERS = [{ name: 'StockFlow backup', extensions: ['db'] }]
@@ -46,6 +47,25 @@ export function createBackupDialogs(getWindow: () => BrowserWindow | null): Back
         ? await dialog.showOpenDialog(window, options)
         : await dialog.showOpenDialog(options)
       return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]
+    }
+  }
+}
+
+/** The Save dialog of an invoice PDF, modal to the main window. Windows asks before it replaces an existing file. */
+export function createPdfDialogs(getWindow: () => BrowserWindow | null): PdfDialogs {
+  return {
+    async choosePdfFile(defaultPath) {
+      const options: SaveDialogOptions = {
+        title: 'Save invoice as PDF',
+        defaultPath,
+        buttonLabel: 'Save PDF',
+        filters: [{ name: 'PDF document', extensions: ['pdf'] }]
+      }
+      const window = getWindow()
+      const result = window
+        ? await dialog.showSaveDialog(window, options)
+        : await dialog.showSaveDialog(options)
+      return result.canceled || !result.filePath ? null : result.filePath
     }
   }
 }

@@ -105,6 +105,25 @@ describe('amountInWords options', () => {
     )
   })
 
+  it('can put each label before its words, as printed invoices and cheques do', () => {
+    const rupees = { singular: 'Rupees', plural: 'Rupees' }
+    expect(amountInWords(12_500_00, { labelPosition: 'before', majorUnit: rupees })).toBe(
+      'Rupees Twelve Thousand Five Hundred Only'
+    )
+    expect(amountInWords(1_25_050, { labelPosition: 'before', majorUnit: rupees })).toBe(
+      'Rupees One Thousand Two Hundred Fifty and Paisa Fifty Only'
+    )
+    expect(amountInWords(50, { labelPosition: 'before', majorUnit: rupees })).toBe(
+      'Paisa Fifty Only'
+    )
+    expect(amountInWords(0, { labelPosition: 'before', majorUnit: rupees })).toBe(
+      'Rupees Zero Only'
+    )
+    expect(
+      amountInWords(100, { labelPosition: 'before', majorUnit: { singular: '', plural: '' } })
+    ).toBe('One Only')
+  })
+
   it('supports the international numbering system', () => {
     expect(amountInWords(1_00_000_00, { numbering: 'international' })).toBe(
       'One Hundred Thousand Rupees Only'

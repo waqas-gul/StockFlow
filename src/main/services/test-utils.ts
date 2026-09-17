@@ -8,6 +8,12 @@ import { TEST_TIME, testContext, type TempDir, type TestContext } from '../db/te
 import { AutomaticBackups, type SchedulerTimers } from './auto-backup'
 import { BackupStatusStore } from './backup-status'
 import { BackupService, type BackupDialogs } from './backup.service'
+import {
+  InvoicePrintService,
+  type PdfDialogs,
+  type PrintTarget,
+  type PrintTargetView
+} from './invoice-print.service'
 import { LiveDatabase } from './live-database'
 import { OperationLock } from './operation-lock'
 import { RestoreService } from './restore.service'
@@ -68,19 +74,23 @@ export function testClock(start: Date = TEST_TIME): TestClock {
 }
 
 /** File dialogs that answer from queues and record where they were opened. An empty queue means Cancel. */
-export interface FakeDialogs extends BackupDialogs {
+export interface FakeDialogs extends BackupDialogs, PdfDialogs {
   readonly saveRequests: string[]
   readonly openRequests: string[]
+  readonly pdfRequests: string[]
   readonly saveAnswers: Array<string | null>
   readonly openAnswers: Array<string | null>
+  readonly pdfAnswers: Array<string | null>
 }
 
 export function fakeDialogs(): FakeDialogs {
   const dialogs: FakeDialogs = {
     saveRequests: [],
     openRequests: [],
+    pdfRequests: [],
     saveAnswers: [],
     openAnswers: [],
+    pdfAnswers: [],
     chooseBackupFile: async (defaultPath) => {
       dialogs.saveRequests.push(defaultPath)
       return dialogs.saveAnswers.shift() ?? null
@@ -88,9 +98,53 @@ export function fakeDialogs(): FakeDialogs {
     chooseRestoreFile: async (defaultFolder) => {
       dialogs.openRequests.push(defaultFolder)
       return dialogs.openAnswers.shift() ?? null
+    },
+    choosePdfFile: async (defaultPath) => {
+      dialogs.pdfRequests.push(defaultPath)
+      return dialogs.pdfAnswers.shift() ?? null
     }
   }
   return dialogs
+}
+
+/** The app window as printing sees it: what it shows is set by the test, and prints and PDFs are recorded. */
+export interface FakePrintTarget extends PrintTarget {
+  /** False: there is no window. */
+  available: boolean
+  shown: PrintTargetView
+  readonly printed: string[]
+  readonly pdfs: string[]
+  /** What the system print dialog does: the job is sent, cancelled, or fails with this error. */
+  printOutcome: 'SENT' | 'CANCELLED' | Error
+  /** An error: the PDF cannot be created. Otherwise the PDF is the text "%PDF-<paper size>". */
+  pdfOutcome: Error | undefined
+  /** While set, print waits for it (a print dialog left open). */
+  printGate: Promise<void> | null
+}
+
+export function fakePrintTarget(): FakePrintTarget {
+  const target: FakePrintTarget = {
+    available: true,
+    shown: { route: '/', invoiceNo: null, paperSize: null },
+    printed: [],
+    pdfs: [],
+    printOutcome: 'SENT',
+    pdfOutcome: undefined,
+    printGate: null,
+    inspect: async () => target.shown,
+    print: async (paperSize) => {
+      if (target.printGate !== null) await target.printGate
+      if (target.printOutcome instanceof Error) throw target.printOutcome
+      target.printed.push(paperSize)
+      return target.printOutcome
+    },
+    printToPdf: async (paperSize) => {
+      if (target.pdfOutcome instanceof Error) throw target.pdfOutcome
+      target.pdfs.push(paperSize)
+      return new TextEncoder().encode(`%PDF-${paperSize}`)
+    }
+  }
+  return target
 }
 
 export interface ScheduledTimer {
@@ -139,6 +193,9 @@ export interface ServicesFixture {
   readonly backups: BackupService
   readonly restore: RestoreService
   readonly automatic: AutomaticBackups
+  /** The app window as invoice printing sees it. */
+  readonly printTarget: FakePrintTarget
+  readonly printing: InvoicePrintService
   /** The Documents folder the first Save dialog opens in. */
   readonly documentsDir: string
 }
@@ -206,6 +263,16 @@ export async function createServicesFixture(
     createToken: options.createToken
   })
   const automatic = new AutomaticBackups({ ctx, database, lock, status, timers })
+  const printTarget = fakePrintTarget()
+  const printing = new InvoicePrintService({
+    database,
+    log: ctx.log,
+    target: () => (printTarget.available ? printTarget : null),
+    dialogs,
+    documentsDir,
+    appDataPath: options.appDataPath ?? 'C:\\Elsewhere\\AppData\\Roaming',
+    homePath: options.homePath ?? 'C:\\Elsewhere'
+  })
   return {
     ctx,
     clock,
@@ -220,6 +287,8 @@ export async function createServicesFixture(
     backups,
     restore,
     automatic,
+    printTarget,
+    printing,
     documentsDir
   }
 }

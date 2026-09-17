@@ -68,7 +68,10 @@ describe('createApi (the preload bridge)', () => {
       'invoices:list:function',
       'invoices:get:function',
       'invoices:updateDispatch:function',
-      'invoices:void:function'
+      'invoices:void:function',
+      'invoices:printable:function',
+      'invoices:print:function',
+      'invoices:savePdf:function'
     ])
   })
 

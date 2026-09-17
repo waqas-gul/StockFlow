@@ -10,6 +10,7 @@
  * - UNIT_LOCKED: a product unit change that stock history forbids (base quantity, base unit, removing a unit).
  * - DUPLICATE: a name or code that is already used (company name, product code).
  * - INVENTORY_INVARIANT: a document's saved stock records no longer match it, so it cannot be reversed exactly.
+ * - PRINT_FAILED: an invoice was not printed, or its PDF was not saved (no file was written or replaced).
  */
 export type AppErrorCode =
   | 'VALIDATION'
@@ -27,6 +28,7 @@ export type AppErrorCode =
   | 'SETTING_LOCKED'
   | 'UNIT_LOCKED'
   | 'INVENTORY_INVARIANT'
+  | 'PRINT_FAILED'
   | 'DB_ERROR'
   | 'INTERNAL'
 

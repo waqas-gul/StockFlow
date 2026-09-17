@@ -171,7 +171,7 @@ describe('Invoice detail', () => {
       /<details[^>]*>\s*<summary[^>]*>Internal<\/summary>.*Rs 5,600\.00.*<\/details>/s
     )
     expect(html).not.toMatch(/<details[^>]*open/)
-    expect(shown).not.toMatch(/\bEdit Invoice\b|\bDelete\b|\bPrint\b/)
+    expect(shown).not.toMatch(/\bEdit Invoice\b|\bDelete\b/)
   })
 
   it('a void invoice shows when and why, and offers neither Edit Dispatch nor Void', () => {

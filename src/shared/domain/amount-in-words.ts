@@ -26,6 +26,11 @@ export interface AmountInWordsOptions {
   readonly minorUnit?: UnitLabel
   /** Text appended at the end. Default 'Only'; '' omits it. */
   readonly suffix?: string
+  /**
+   * Where each unit label goes: 'after' its words ("Five Hundred Rupees", the default) or 'before' them ("Rupees Five
+   * Hundred"), as printed invoices and cheques write it.
+   */
+  readonly labelPosition?: 'after' | 'before'
 }
 
 const ONES = [
@@ -120,9 +125,15 @@ export function integerToWords(value: number, numbering: NumberingSystem = 'sout
   )
 }
 
-function withLabel(count: number, words: string, label: UnitLabel): string {
+function withLabel(
+  count: number,
+  words: string,
+  label: UnitLabel,
+  position: 'after' | 'before'
+): string {
   const text = count === 1 ? label.singular : label.plural
-  return text ? `${words} ${text}` : words
+  if (!text) return words
+  return position === 'before' ? `${text} ${words}` : `${words} ${text}`
 }
 
 /**
@@ -136,7 +147,8 @@ export function amountInWords(amountMinor: MinorUnits, options: AmountInWordsOpt
     numbering = 'south-asian',
     majorUnit = { singular: 'Rupee', plural: 'Rupees' },
     minorUnit = { singular: 'Paisa', plural: 'Paisa' },
-    suffix = 'Only'
+    suffix = 'Only',
+    labelPosition = 'after'
   } = options
   assertMinorDigits(minorDigits)
   assertNonNegativeInteger(amountMinor, 'Amount')
@@ -144,8 +156,10 @@ export function amountInWords(amountMinor: MinorUnits, options: AmountInWordsOpt
   const [major, minor] = divMod(amountMinor, 10 ** minorDigits)
   const parts: string[] = []
   if (major > 0 || minor === 0)
-    parts.push(withLabel(major, integerToWords(major, numbering), majorUnit))
-  if (minor > 0) parts.push(withLabel(minor, integerToWords(minor, numbering), minorUnit))
+    parts.push(withLabel(major, integerToWords(major, numbering), majorUnit, labelPosition))
+  if (minor > 0) {
+    parts.push(withLabel(minor, integerToWords(minor, numbering), minorUnit, labelPosition))
+  }
   const text = parts.join(' and ')
   return suffix ? `${text} ${suffix}` : text
 }

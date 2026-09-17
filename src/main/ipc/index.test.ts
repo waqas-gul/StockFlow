@@ -1,5 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { win32 } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ipcCalls } from '@shared/ipc-contract'
 import { MINOR_DIGITS_LOCKED_MESSAGE } from '@shared/settings'
@@ -64,6 +65,7 @@ beforeEach(async () => {
       database: fixture.database,
       backups: fixture.backups,
       restore: fixture.restore,
+      printing: fixture.printing,
       ctx: fixture.ctx
     },
     {
@@ -127,6 +129,9 @@ describe('registerIpc', () => {
     }
     expect(fixture.dialogs.saveRequests).toEqual([])
     expect(fixture.dialogs.openRequests).toEqual([])
+    expect(fixture.dialogs.pdfRequests).toEqual([])
+    expect(fixture.printTarget.printed).toEqual([])
+    expect(fixture.printTarget.pdfs).toEqual([])
     expect(fixture.opened).toEqual([])
     expect(backupFiles()).toEqual(['auto', 'pre-migration', 'pre-restore'])
   })
@@ -1048,6 +1053,72 @@ describe('invoices', () => {
     })
   })
 
+  it('prints and saves the PDF of the invoice in the print preview, and printing writes nothing', async () => {
+    const ids = await seed()
+    const posted = (await call('invoices:post', invoiceInput(ids, ids.customerId))) as {
+      ok: true
+      data: { id: number }
+    }
+    const id = posted.data.id
+    const writes = (): number => fixture.db.get<{ n: number }>('SELECT total_changes() AS n')!.n
+    const before = writes()
+
+    await expect(call('invoices:printable', id)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        invoiceNo: 'INV-000001',
+        businessName: 'StockFlow',
+        paperSize: 'A4',
+        customer: { name: 'Ali Raza' },
+        totals: { totalMinor: 295_000, receivedMinor: 100_000, netOutstandingMinor: 195_000 },
+        amountInWords: 'Rupees Two Thousand Nine Hundred Fifty Only',
+        pdfFileName: 'INV-000001.pdf'
+      }
+    })
+
+    // Only the invoice's own print preview is printed.
+    await expect(call('invoices:print', { id, paperSize: 'A4' })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN_STATE',
+        message: 'Open the print preview of INV-000001 to print it or save it as a PDF.'
+      }
+    })
+    fixture.printTarget.shown = {
+      route: `/invoices/${id}/print`,
+      invoiceNo: 'INV-000001',
+      paperSize: 'A5'
+    }
+    await expect(call('invoices:print', { id, paperSize: 'A5' })).resolves.toEqual({
+      ok: true,
+      data: { status: 'SENT' }
+    })
+
+    const file = win32.join(fixture.documentsDir, 'INV-000001.pdf')
+    fixture.dialogs.pdfAnswers.push(file)
+    await expect(call('invoices:savePdf', { id, paperSize: 'A5' })).resolves.toEqual({
+      ok: true,
+      data: { status: 'SAVED', fileName: 'INV-000001.pdf', location: fixture.documentsDir }
+    })
+    expect(fixture.dialogs.pdfRequests).toEqual([file])
+    expect(readFileSync(file).toString()).toBe('%PDF-A5')
+    await expect(call('invoices:savePdf', { id, paperSize: 'A5' })).resolves.toEqual({
+      ok: true,
+      data: { status: 'CANCELLED' }
+    })
+
+    await expect(call('invoices:printable', 999)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND', message: 'This invoice no longer exists.' }
+    })
+    expect(fixture.printTarget.printed).toEqual(['A5'])
+    expect(writes()).toBe(before)
+    // No invoice number was used up.
+    await expect(
+      call('invoices:context', { customerId: null, productIds: [] })
+    ).resolves.toMatchObject({ ok: true, data: { nextInvoiceNo: 'INV-000002' } })
+  })
+
   it.each<[string, string, unknown]>([
     ['an incomplete invoice', 'invoices:post', { requestId: 'ipc-invoice-0009' }],
     ['a context without product ids', 'invoices:context', { customerId: null }],
@@ -1064,13 +1135,40 @@ describe('invoices', () => {
       { id: 1, biltyNo: null, transportName: null, addaName: null, note: null, totalMinor: 0 }
     ],
     ['a void without a reason', 'invoices:void', { id: 1, moneyReturned: false }],
-    ['a void without the money decision', 'invoices:void', { id: 1, reason: 'Duplicate' }]
+    ['a void without the money decision', 'invoices:void', { id: 1, reason: 'Duplicate' }],
+    ['a printable invoice id as text', 'invoices:printable', '1'],
+    ['a print without a paper size', 'invoices:print', { id: 1 }],
+    ['a print on Letter paper', 'invoices:print', { id: 1, paperSize: 'Letter' }],
+    ['a print that names a printer', 'invoices:print', { id: 1, paperSize: 'A4', deviceName: 'X' }],
+    ['a PDF with a file name', 'invoices:savePdf', { id: 1, paperSize: 'A4', fileName: 'a.pdf' }]
   ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
     await expect(call(channel, input)).resolves.toMatchObject({
       ok: false,
       error: { code: 'VALIDATION' }
     })
   })
+})
+
+describe('invoice printing: the renderer never supplies a path or a printer', () => {
+  it.each(['invoices:print', 'invoices:savePdf'])(
+    '%s refuses a path in place of its input or next to it',
+    async (channel) => {
+      const inputs = [
+        ...PATHS,
+        { id: 1, paperSize: 'A4', path: 'C:\\Windows\\x.pdf' },
+        { id: 1, paperSize: 'A4', folder: 'E:\\' }
+      ]
+      for (const input of inputs) {
+        await expect(call(channel, input)).resolves.toMatchObject({
+          ok: false,
+          error: { code: 'VALIDATION' }
+        })
+      }
+      expect(fixture.dialogs.pdfRequests).toEqual([])
+      expect(fixture.printTarget.printed).toEqual([])
+      expect(fixture.printTarget.pdfs).toEqual([])
+    }
+  )
 })
 
 describe('backup and restore: the renderer never supplies a path', () => {

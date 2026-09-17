@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Ban, Info, Pencil } from 'lucide-react'
+import { ArrowLeft, Ban, Info, Pencil, Printer } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { formatDisplayDate } from '@shared/dates'
 import { PAYMENT_METHOD_LABELS } from '@shared/payments'
+import { invoicePrintPath } from '@shared/invoice-print'
 import { PRICE_TIER_LABELS, type InvoiceDetail } from '@shared/invoices'
 import { NotFoundPage } from '@renderer/app/NotFoundPage'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
@@ -177,6 +178,12 @@ export function InvoiceDetailView({
             >
               {money(invoice.totalMinor)}
             </span>
+            <Button variant="outline" size="sm" className="mt-2" asChild>
+              <Link to={invoicePrintPath(invoice.id)}>
+                <Printer aria-hidden />
+                Print Invoice
+              </Link>
+            </Button>
           </div>
         </CardContent>
       </Card>

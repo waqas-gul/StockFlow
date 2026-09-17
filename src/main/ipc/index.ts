@@ -32,6 +32,7 @@ import {
   ProductSearchInputSchema,
   ProductUpdateSchema
 } from '@shared/products'
+import { InvoicePrintInputSchema } from '@shared/invoice-print'
 import { EditableSettingsPatchSchema } from '@shared/settings'
 import {
   AdjustmentListInputSchema,
@@ -64,6 +65,7 @@ import {
   setCustomerActive,
   updateCustomer
 } from '../services/customers.service'
+import { readPrintableInvoice, type InvoicePrintService } from '../services/invoice-print.service'
 import { voidInvoice } from '../services/invoice-void.service'
 import {
   createInvoice,
@@ -116,6 +118,8 @@ export interface IpcDependencies {
   readonly database: LiveDatabase
   readonly backups: BackupService
   readonly restore: RestoreService
+  /** Print and Save as PDF of the invoice shown in the print preview. */
+  readonly printing: InvoicePrintService
   /** The migrations, clock and log of the running app. */
   readonly ctx: DataSafetyContext
 }
@@ -131,7 +135,7 @@ export const RestoreRequestSchema = z.strictObject({
 
 /** Every allow-listed IPC call and its implementation. The typecheck fails if one is missing. */
 export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
-  const { database, backups, restore, ctx } = deps
+  const { database, backups, restore, printing, ctx } = deps
   return {
     app: {
       info: { input: NO_INPUT, run: () => readAppInfo({ ...deps.appInfo, db: database.get() }) }
@@ -269,7 +273,11 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       void: {
         input: InvoiceVoidInputSchema,
         run: (input) => voidInvoice(database.get(), input, ctx.now())
-      }
+      },
+      // Printing is read-only; the main process opens the print and Save dialogs.
+      printable: { input: InvoiceIdSchema, run: (id) => readPrintableInvoice(database.get(), id) },
+      print: { input: InvoicePrintInputSchema, run: (input) => printing.print(input) },
+      savePdf: { input: InvoicePrintInputSchema, run: (input) => printing.savePdf(input) }
     }
   }
 }

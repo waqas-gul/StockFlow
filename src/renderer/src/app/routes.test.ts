@@ -5,12 +5,14 @@ import { CustomerDetailPage } from '@renderer/features/customers/CustomerDetailP
 import { CustomersPage } from '@renderer/features/customers/CustomersPage'
 import { InvoiceDetailPage } from '@renderer/features/invoices/InvoiceDetailPage'
 import { InvoiceHistoryPage } from '@renderer/features/invoices/InvoiceHistoryPage'
+import { InvoicePrintPage } from '@renderer/features/invoices/InvoicePrintPage'
 import { NewInvoicePage } from '@renderer/features/invoices/NewInvoicePage'
 import { PaymentsPage } from '@renderer/features/payments/PaymentsPage'
 import { ProductsPage } from '@renderer/features/products/ProductsPage'
 import { SettingsPage } from '@renderer/features/settings/SettingsPage'
 import { StockAdjustmentsPage } from '@renderer/features/stock/StockAdjustmentsPage'
 import { StockInPage } from '@renderer/features/stock/StockInPage'
+import { AppShell } from './layout/AppShell'
 import { allNavItems, findSectionItem } from './navigation'
 import { NotFoundPage } from './NotFoundPage'
 import { routes } from './routes'
@@ -82,6 +84,13 @@ describe('navigation and routes', () => {
     expect(leafComponent('/invoices/new')).toBe(NewInvoicePage)
     expect(leafComponent('/invoices')).toBe(InvoiceHistoryPage)
     expect(leafComponent('/invoices/12')).toBe(InvoiceDetailPage)
+  })
+
+  it('routes /invoices/:id/print to the Phase 9B print preview, outside the app shell', () => {
+    expect(leafComponent('/invoices/12/print')).toBe(InvoicePrintPage)
+    const matched = matchRoutes(routes, '/invoices/12/print') ?? []
+    expect(matched.map((match) => match.route.Component)).not.toContain(AppShell)
+    expect(matchRoutes(routes, '/invoices/12')?.[0].route.Component).toBe(AppShell)
   })
 
   it('titles a customer page with its section', () => {
