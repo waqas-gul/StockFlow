@@ -19,9 +19,12 @@ export interface ProductPickerProps {
   readonly id?: string
 }
 
+/** How many products the list holds: the whole catalogue past this is narrowed by typing, not by scrolling. */
+const SEARCH_LIMIT = 50
+
 /**
- * Type a code, name or company, then pick with the mouse or the keyboard (↑ ↓ Enter; Enter alone takes the best
- * match, so a typed or scanned code followed by Enter picks that product).
+ * Opens on the product list and narrows it as you type a code, name or company; pick with the mouse or the keyboard
+ * (↑ ↓ Enter; Enter alone takes the best match, so a typed or scanned code followed by Enter picks that product).
  */
 export function ProductPicker({
   label,
@@ -38,10 +41,10 @@ export function ProductPicker({
   const editing = text !== null
   const query = useDebouncedValue((text ?? '').trim(), 150)
   const results = useQuery({
-    ...productSearchQuery({ query, limit: 10, includeInactive }),
-    enabled: editing && query !== ''
+    ...productSearchQuery({ query, limit: SEARCH_LIMIT, includeInactive }),
+    enabled: editing
   })
-  const items = editing && query !== '' ? (results.data ?? []) : []
+  const items = editing ? (results.data ?? []) : []
 
   const pick = (item: ProductSearchItem | undefined): void => {
     if (item === undefined) return
@@ -127,9 +130,9 @@ export function ProductPicker({
           ))}
         </ul>
       )}
-      {editing && query !== '' && results.isSuccess && items.length === 0 && (
+      {editing && results.isSuccess && items.length === 0 && (
         <p className="absolute z-50 mt-1 w-full rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md">
-          No product matches.
+          {query === '' ? 'No products yet. Add one under Products.' : 'No product matches.'}
         </p>
       )}
     </div>

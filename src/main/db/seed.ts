@@ -15,6 +15,8 @@ import { createPayment, voidPayment } from '../services/payments.service'
 import { createProduct } from '../services/products.service'
 import { readSettings } from '../services/settings.service'
 import { adjustStock, receiveStock, voidReceipt } from '../services/stock.service'
+import { createSupplierPayment, voidSupplierPayment } from '../services/supplier-payments.service'
+import { adjustSupplierBalance, createSupplier } from '../services/suppliers.service'
 
 /*
  * Demo data for a development database (`npm run seed`). It is never part of the app: nothing in src/main
@@ -69,6 +71,12 @@ interface SeedProduct {
 }
 
 interface SeedCustomer {
+  readonly id: number
+  readonly code: string
+  readonly name: string
+}
+
+interface SeedSupplier {
   readonly id: number
   readonly code: string
   readonly name: string
@@ -339,13 +347,80 @@ const EXTRA_EXPENSE_CATEGORIES = [
   { name: 'Repairs & Maintenance', group: 'SHOP' as const }
 ]
 
-const SUPPLIERS = [
-  'Metro Cash & Carry',
-  'Al-Fatah Distributors',
-  'Shaheen Marketing',
-  'Karachi Wholesale Depot',
-  'Punjab Trading Company'
-] as const
+/**
+ * The firms the shop buys stock from (migration 0003). A supplier is not a `company`: companies are the brands on the
+ * products, suppliers are the accounts the shop owes money to.
+ */
+interface SupplierSpec {
+  readonly name: string
+  readonly contactPerson: string
+  readonly phone: string
+  readonly address: string
+  readonly city: string
+  readonly notes: string | null
+  /** What the shop owed when it started using StockFlow. DUE: the shop owes the supplier. */
+  readonly opening: { readonly side: 'DUE' | 'ADVANCE'; readonly amountMinor: number } | null
+}
+
+const SUPPLIERS: readonly SupplierSpec[] = [
+  {
+    name: 'Metro Cash & Carry',
+    contactPerson: 'Kamran Sheikh',
+    phone: '042-35881200',
+    address: 'Thokar Niaz Baig, Multan Road',
+    city: 'Lahore',
+    notes: 'Credit of 30 days agreed.',
+    opening: { side: 'DUE', amountMinor: 18450000 }
+  },
+  {
+    name: 'Al-Fatah Distributors',
+    contactPerson: 'Tariq Mehmood',
+    phone: '0300-8451290',
+    address: 'Badami Bagh Wholesale Market',
+    city: 'Lahore',
+    notes: null,
+    opening: { side: 'DUE', amountMinor: 9200000 }
+  },
+  {
+    name: 'Shaheen Marketing',
+    contactPerson: 'Nadeem Shah',
+    phone: '0321-6612340',
+    address: 'Circular Road',
+    city: 'Faisalabad',
+    notes: 'Delivers on Tuesdays.',
+    opening: null
+  },
+  {
+    name: 'Karachi Wholesale Depot',
+    contactPerson: 'Salman Yusuf',
+    phone: '021-32412890',
+    address: 'Jodia Bazar',
+    city: 'Karachi',
+    notes: 'Payment by bank transfer only.',
+    opening: { side: 'ADVANCE', amountMinor: 1500000 }
+  },
+  {
+    name: 'Punjab Trading Company',
+    contactPerson: 'Ghulam Abbas',
+    phone: '0333-7789012',
+    address: 'GT Road, Wazirabad',
+    city: 'Gujranwala',
+    notes: null,
+    opening: { side: 'DUE', amountMinor: 4780000 }
+  },
+  {
+    name: 'Rehmat Traders',
+    contactPerson: 'Asif Rehmat',
+    phone: '0345-2290011',
+    address: 'Hussain Agahi Road',
+    city: 'Multan',
+    notes: 'Small orders, cash on delivery.',
+    opening: null
+  }
+]
+
+/** Suppliers the shop buys from without keeping an account: the receipt only records the name as free text. */
+const CASUAL_SUPPLIERS = ['Local Market Purchase', 'Hameed Kiryana Supply'] as const
 
 const TRANSPORTS = [
   'Kohistan Goods',
@@ -385,7 +460,7 @@ export function hasBusinessData(db: Db): boolean {
   const counts = db.get<{ n: number }>(
     `SELECT (SELECT count(*) FROM products) + (SELECT count(*) FROM invoices)
           + (SELECT count(*) FROM stock_receipts) + (SELECT count(*) FROM expenses)
-          + (SELECT count(*) FROM companies) AS n`
+          + (SELECT count(*) FROM companies) + (SELECT count(*) FROM suppliers) AS n`
   )
   return (counts?.n ?? 0) > 0
 }
@@ -432,6 +507,28 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
     "SELECT id, code, name FROM customers WHERE code = 'C-00001'"
   )!
 
+  report('suppliers and what the shop owed them')
+  const suppliers: SeedSupplier[] = SUPPLIERS.map((spec) => {
+    const created = createSupplier(
+      db,
+      {
+        name: spec.name,
+        contactPerson: spec.contactPerson,
+        phone: spec.phone,
+        address: spec.address,
+        city: spec.city,
+        notes: spec.notes,
+        opening:
+          spec.opening === null
+            ? null
+            : { side: spec.opening.side, amountMinor: spec.opening.amountMinor, date: openingDate },
+        currencyMinorDigits: minorDigits
+      },
+      now()
+    )
+    return { id: created.id, code: created.code, name: created.name }
+  })
+
   report('expense categories')
   for (const category of EXTRA_EXPENSE_CATEGORIES) {
     createExpenseCategory(db, { name: category.name, group: category.group })
@@ -470,12 +567,15 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
     )
   })
 
-  // Stock In: a purchase roughly every nine days, three to six products at a time.
+  // Stock In: a purchase roughly every nine days, three to six products at a time. Most are bought on a supplier
+  // account, so the receipt's total goes onto what the shop owes; every fifth one is a casual cash purchase with
+  // no account, which keeps the free-text supplier name working too.
   let receiptNumber = 0
   for (let offset = HISTORY_DAYS - 6; offset >= 3; offset -= 9) {
     const chosen = sample(products, 3 + Math.floor(random() * 4), random)
-    const supplier = SUPPLIERS[Math.floor(random() * SUPPLIERS.length)]
     const index = ++receiptNumber
+    const onAccount = index % 5 !== 0
+    const supplier = suppliers[Math.floor(random() * suppliers.length)]
     const lines = chosen.map((product) => ({
       productId: product.id,
       unitId: product.largestUnit.id,
@@ -484,15 +584,33 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
         product.costMinor * product.largestUnit.baseQty * (0.97 + random() * 0.08)
       )
     }))
+    const totalCostMinor = lines.reduce((sum, line) => sum + line.quantity * line.unitCostMinor, 0)
+    // Part of the bill handed over when the goods arrived; the rest stays on the account.
+    const paidNowRoll = random()
+    const paidNow =
+      !onAccount || paidNowRoll < 0.4
+        ? null
+        : {
+            amountMinor:
+              paidNowRoll < 0.55
+                ? totalCostMinor
+                : roundTo(Math.floor(totalCostMinor * (0.3 + random() * 0.4)), 50000),
+            method: PAYMENT_METHOD_LIST[Math.floor(random() * PAYMENT_METHOD_LIST.length)],
+            reference: null
+          }
     at(day(offset), 1, (date) =>
       receiveStock(
         db,
         {
           requestId: requestId('grn', String(index)),
           receiptDate: date,
-          supplierName: supplier,
+          // A supplier account saves the supplier's name itself; free text is only for a purchase without one.
+          supplierId: onAccount ? supplier.id : null,
+          supplierName: onAccount ? null : CASUAL_SUPPLIERS[index % CASUAL_SUPPLIERS.length],
+          supplierBillNo: onAccount ? `${1200 + index * 31}` : null,
           reference: `Bill ${4200 + index * 7}`,
           note: index % 3 === 0 ? 'Goods checked and counted at the shop.' : null,
+          paidNow,
           currencyMinorDigits: minorDigits,
           lines
         },
@@ -558,6 +676,44 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
                 ? `TRF-${770000 + index * 29}`
                 : null,
           note: withNote ? 'Received at the shop.' : null,
+          currencyMinorDigits: minorDigits
+        },
+        now()
+      )
+    })
+  }
+
+  // Paying the suppliers down, every fifth day. Nothing is paid to a supplier who is not owed anything, so the
+  // shop never hands over money it does not owe (an overpayment would sit on the account as an advance).
+  let supplierPaymentNumber = 0
+  for (let offset = HISTORY_DAYS - 12; offset >= 1; offset -= 5) {
+    const supplier = suppliers[Math.floor(random() * suppliers.length)]
+    const index = ++supplierPaymentNumber
+    const method = PAYMENT_METHOD_LIST[Math.floor(random() * PAYMENT_METHOD_LIST.length)]
+    const share = 0.35 + random() * 0.55
+    const withNote = random() < 0.3
+    at(day(offset), 3, (date) => {
+      const balance = supplierBalanceOf(db, supplier.id)
+      if (balance <= 0) return
+      const amount = Math.min(
+        balance,
+        roundTo(Math.max(100000, Math.floor(balance * share)), 50000)
+      )
+      createSupplierPayment(
+        db,
+        {
+          requestId: requestId('spay', String(index)),
+          supplierId: supplier.id,
+          paymentDate: date,
+          amountMinor: amount,
+          method,
+          reference:
+            method === 'CHEQUE'
+              ? `CHQ-${610000 + index * 17}`
+              : method === 'BANK'
+                ? `TRF-${840000 + index * 23}`
+                : null,
+          note: withNote ? 'Paid against the supplier bill.' : null,
           currencyMinorDigits: minorDigits
         },
         now()
@@ -687,15 +843,19 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
   })
   notes.push(`${dispatched.length} invoices carry dispatch details and a change log`)
 
-  // A receipt entered by mistake. A receipt can only be voided while it is still the last stock activity of
-  // its products, so it is posted and reversed here, after every other document.
+  // A receipt entered by mistake, on a supplier account so the void also takes the purchase back off what the
+  // shop owes. A receipt can only be voided while it is still the last stock activity of its products, so it is
+  // posted and reversed here, after every other document.
   const mistake = productByCode.get('P-1011')!
   const mistakenReceipt = receiveStock(
     db,
     {
       requestId: requestId('grn', 'mistake'),
       receiptDate: today,
-      supplierName: 'Shaheen Marketing',
+      supplierId: suppliers[2].id,
+      // Not used with a supplier account: the receipt keeps the supplier's own name.
+      supplierName: null,
+      supplierBillNo: '1999',
       reference: 'Bill 4999',
       note: 'Entered against the wrong shop.',
       currencyMinorDigits: minorDigits,
@@ -718,7 +878,9 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
     },
     now()
   )
-  notes.push(`receipt ${mistakenReceipt.receiptNo} is void`)
+  notes.push(
+    `receipt ${mistakenReceipt.receiptNo} is void, and its purchase was taken off the account`
+  )
 
   // An order a customer sent back, and a counter sale where the money was handed back.
   const credit = posted.filter((invoice) => !invoice.walkIn).at(-1)
@@ -774,6 +936,42 @@ export function seedDemoData(db: Db, options: SeedOptions = {}): SeedSummary {
       now()
     )
     notes.push('one customer balance carries an adjustment')
+  }
+
+  // A supplier payment sent twice. A payment made with a receipt ("paid now") is left alone: that money really
+  // did change hands when the goods arrived.
+  const doublePaid = db.get<{ id: number; payment_no: string }>(
+    `SELECT id, payment_no FROM supplier_payments
+     WHERE status = 'POSTED' AND stock_receipt_id IS NULL ORDER BY id DESC LIMIT 1`
+  )
+  if (doublePaid !== undefined) {
+    voidSupplierPayment(
+      db,
+      { id: doublePaid.id, reason: 'Sent twice: the bank transfer was repeated.' },
+      now()
+    )
+    notes.push(`supplier payment ${doublePaid.payment_no} is void`)
+  }
+
+  // A correction on the account of the supplier the shop owes the most: a short delivery the supplier allowed.
+  const owed = db.get<{ supplier_id: number }>(
+    `SELECT supplier_id FROM v_supplier_balance WHERE balance_minor > 0
+     ORDER BY balance_minor DESC LIMIT 1`
+  )
+  if (owed !== undefined) {
+    adjustSupplierBalance(
+      db,
+      {
+        supplierId: owed.supplier_id,
+        entryDate: today,
+        direction: 'DECREASE',
+        amountMinor: 400000,
+        reason: 'Short delivery allowed by the supplier against the bill.',
+        currencyMinorDigits: minorDigits
+      },
+      now()
+    )
+    notes.push('one supplier balance carries an adjustment')
   }
 
   return { tables: countRows(db), firstDate: openingDate, lastDate: today, notes }
@@ -1010,6 +1208,16 @@ function customerBalanceOf(db: Db, customerId: number): number {
     db.get<{ balance_minor: number }>(
       'SELECT balance_minor FROM v_customer_balance WHERE customer_id = ?',
       [customerId]
+    )?.balance_minor ?? 0
+  )
+}
+
+/** What the shop owes the supplier right now: positive Due, negative a supplier advance. */
+function supplierBalanceOf(db: Db, supplierId: number): number {
+  return (
+    db.get<{ balance_minor: number }>(
+      'SELECT balance_minor FROM v_supplier_balance WHERE supplier_id = ?',
+      [supplierId]
     )?.balance_minor ?? 0
   )
 }

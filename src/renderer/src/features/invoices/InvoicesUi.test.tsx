@@ -128,6 +128,17 @@ function teaDraft(...more: InvoiceDraftAction[]): InvoiceDraft {
   return more.reduce(invoiceDraftReducer, value)
 }
 
+/** The same line, with a 10% discount on it. */
+function teaWithDiscount(): InvoiceDraft {
+  const value = teaDraft()
+  const lineKey = value.lines[0].key
+  const actions: InvoiceDraftAction[] = [
+    { type: 'setDiscountKind', lineKey, kind: 'PERCENT' },
+    { type: 'setLineField', lineKey, field: 'discount', value: '10' }
+  ]
+  return actions.reduce(invoiceDraftReducer, value)
+}
+
 const noop = (): void => undefined
 
 function render(value: InvoiceDraft, overrides: Partial<InvoiceEditorProps> = {}): string {
@@ -198,7 +209,7 @@ describe('New Invoice screen', () => {
       'Checked By',
       'Notes',
       'Add Product',
-      'No products yet.',
+      'No products on this invoice yet',
       'Clear',
       'Post Invoice'
     ]) {
@@ -272,24 +283,44 @@ describe('New Invoice screen', () => {
       'Tapal',
       'Packing 1*12*18',
       'In stock 10 Box + 7 Piece',
-      'Unit Quantity Unit Price Amount',
+      '# Product Unit Qty Unit Price Amount Remove unit Discount Scheme Ctn Net Remove product',
       'Rs 550.00',
       'Custom price',
       'Use list price',
       'Rs 4,500.00',
       'Leaving stock 2 Box + 5 Piece',
       'Add unit',
-      'Free scheme quantity',
-      'Add free quantity',
-      'Discount',
-      'Scheme amount',
-      'Ctn',
-      'Gross Rs 5,050.00',
-      'Net Rs 5,050.00'
+      'Free goods',
+      'Rs 5,050.00'
     ]) {
       expect(shown).toContain(expected)
     }
     expect(shown).not.toMatch(/base unit|qty_base|base quantity/i)
+  })
+
+  it('puts the whole line on one row: the discount, the scheme, Ctn and the net are all there', () => {
+    const html = render(teaDraft())
+    // Nothing a line can carry is behind a button or on another screen: every field is on the row itself.
+    for (const field of [
+      'Line 1 discount type',
+      'Line 1 discount',
+      'Line 1 scheme amount',
+      'Line 1 ctn',
+      'Line 1 unit row 1 quantity',
+      'Line 1 unit row 1 unit price'
+    ]) {
+      expect(html).toContain(`aria-label="${field}"`)
+    }
+  })
+
+  it('names the net of a line, and what it was before a discount came off', () => {
+    const plain = text(render(teaDraft()))
+    expect(plain).toContain('Rs 5,050.00')
+    expect(plain).not.toContain('was Rs')
+    // 10% off Rs 5,050.00 leaves Rs 4,545.00, and the line still says what it started from.
+    const discounted = text(render(teaWithDiscount()))
+    expect(discounted).toContain('Rs 4,545.00')
+    expect(discounted).toContain('was Rs 5,050.00')
   })
 
   it('asks for a custom price when the unit has no price for the tier', () => {
@@ -300,7 +331,7 @@ describe('New Invoice screen', () => {
       rowKey: value.lines[0].quantities[1].key,
       value: ''
     })
-    expect(text(render(withBlankBox))).toContain('No wholesale price: enter a custom price.')
+    expect(text(render(withBlankBox))).toContain('No wholesale price: type one.')
   })
 
   it('warns inline and disables Post Invoice when a line needs more than the stock', () => {

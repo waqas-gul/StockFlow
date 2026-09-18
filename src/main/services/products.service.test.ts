@@ -848,7 +848,6 @@ describe('listProducts and searchProducts', () => {
     expect(find('biscuit')).toEqual([])
     expect(find('biscuit', { includeInactive: true })).toEqual(['OLD-01'])
     expect(find('tea', { limit: 1 })).toEqual(['TEA'])
-    expect(find('')).toEqual([])
     expect(searchProducts(db, { query: 'sug', limit: 5, includeInactive: false })).toEqual([
       {
         id: expect.any(Number),
@@ -859,6 +858,22 @@ describe('listProducts and searchProducts', () => {
         isActive: true
       }
     ])
+  })
+
+  it('search with nothing typed browses the whole catalogue by name', () => {
+    const browse = (overrides: AnyInput = {}): string[] =>
+      searchProducts(db, { query: '', limit: 10, includeInactive: false, ...overrides }).map(
+        (item) => item.code
+      )
+    expect(browse()).toEqual(['RICE_5', 'TEA-02', 'TEA-01', 'SUG-01'])
+    expect(browse({ includeInactive: true })).toEqual([
+      'RICE_5',
+      'TEA-02',
+      'TEA-01',
+      'OLD-01',
+      'SUG-01'
+    ])
+    expect(browse({ limit: 2 })).toEqual(['RICE_5', 'TEA-02'])
   })
 
   it('getProduct reports a product that does not exist', () => {

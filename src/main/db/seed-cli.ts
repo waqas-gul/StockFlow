@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from 'node:fs'
 import { win32 } from 'node:path'
 import { resolveDataPaths } from '../data-paths'
+import { AppFailure } from '../errors'
 import { APP_DATA_FOLDER } from '../app-identity'
 import type { Logger } from '../logging'
 import { initializeDatabase } from './index'
@@ -109,6 +110,13 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error(`\nThe seed failed: ${error instanceof Error ? error.message : String(error)}`)
+  // A service refusal names the fields it refused, which is what a seed bug almost always comes down to.
+  if (error instanceof AppFailure) {
+    console.error(`  code: ${error.error.code}`)
+    for (const [field, messages] of Object.entries(error.error.fieldErrors ?? {})) {
+      console.error(`  ${field}: ${messages.join(' ')}`)
+    }
+  }
   if (error instanceof Error && error.stack !== undefined) console.error(error.stack)
   process.exitCode = 1
 })

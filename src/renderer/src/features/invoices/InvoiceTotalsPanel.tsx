@@ -14,7 +14,7 @@ import { balanceClassName, balanceText } from '../customers/customer-display'
 import { formatAmount, type CurrencyFormat } from '../products/product-display'
 import type { InvoiceDraft, InvoiceDraftAction } from './invoice-draft'
 import type { InvoiceSummary } from './invoice-summary'
-import { CellError } from './InvoiceLineCard'
+import { CellError } from './InvoiceLineRows'
 
 export interface InvoiceTotalsPanelProps {
   readonly draft: InvoiceDraft

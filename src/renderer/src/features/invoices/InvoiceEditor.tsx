@@ -1,4 +1,4 @@
-import { Banknote, LoaderCircle } from 'lucide-react'
+import { Banknote, LoaderCircle, PackageSearch } from 'lucide-react'
 import type { CustomerListItem } from '@shared/customers'
 import { formatDisplayDate } from '@shared/dates'
 import {
@@ -20,6 +20,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
+import { Table, TableHead, TableHeader, TableRow } from '@renderer/components/ui/table'
 import { cn } from '@renderer/lib/utils'
 import { balanceClassName, balanceText, customerLabel } from '../customers/customer-display'
 import { CustomerPicker } from '../customers/CustomerPicker'
@@ -28,7 +29,7 @@ import type { CurrencyFormat } from '../products/product-display'
 import { ProductPicker } from '../stock/ProductPicker'
 import type { DraftTextField, InvoiceDraft, InvoiceDraftAction } from './invoice-draft'
 import type { InvoiceSummary } from './invoice-summary'
-import { CellError, InvoiceLineCard } from './InvoiceLineCard'
+import { CellError, InvoiceLineRows } from './InvoiceLineRows'
 import { InvoiceTotalsPanel } from './InvoiceTotalsPanel'
 
 export interface InvoiceEditorProps {
@@ -228,25 +229,62 @@ export function InvoiceEditor({
 
       <Card className="gap-0 py-0">
         <CardHeader className="border-b px-4 py-3">
-          <CardTitle className="text-base">Products</CardTitle>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <CardTitle className="text-base">Products</CardTitle>
+            {draft.lines.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {draft.lines.length} of {MAX_INVOICE_LINES} lines
+              </p>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 px-4 py-4">
           {draft.lines.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No products yet.</p>
+            <div className="flex flex-col items-center gap-1 rounded-md border border-dashed px-4 py-6 text-center">
+              <PackageSearch className="size-6 text-muted-foreground" aria-hidden />
+              <p className="text-sm font-medium">No products on this invoice yet</p>
+              <p className="text-sm text-muted-foreground">
+                Search below and press Enter to put the first one on the bill.
+              </p>
+            </div>
           ) : (
-            draft.lines.map((line, index) => (
-              <InvoiceLineCard
-                key={line.key}
-                line={line}
-                index={index}
-                summary={summary.lines[index]}
-                priceTier={draft.priceTier}
-                currency={currency}
-                errors={errors}
-                stockWarning={summary.issues[`lines.${index}.stock`]}
-                dispatch={dispatch}
-              />
-            ))
+            // One table for the whole invoice: every product is a row across it, so quantities and amounts read
+            // down a column instead of being hunted for in a card each.
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8">#</TableHead>
+                  <TableHead className="min-w-60">Product</TableHead>
+                  <TableHead className="w-32">Unit</TableHead>
+                  <TableHead className="w-20">Qty</TableHead>
+                  <TableHead className="w-28">Unit Price</TableHead>
+                  <TableHead className="w-28 text-right">Amount</TableHead>
+                  <TableHead className="w-8">
+                    <span className="sr-only">Remove unit</span>
+                  </TableHead>
+                  <TableHead className="w-40">Discount</TableHead>
+                  <TableHead className="w-24">Scheme</TableHead>
+                  <TableHead className="w-20">Ctn</TableHead>
+                  <TableHead className="w-28 text-right">Net</TableHead>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Remove product</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              {draft.lines.map((line, index) => (
+                <InvoiceLineRows
+                  key={line.key}
+                  line={line}
+                  index={index}
+                  summary={summary.lines[index]}
+                  priceTier={draft.priceTier}
+                  currency={currency}
+                  errors={errors}
+                  stockWarning={summary.issues[`lines.${index}.stock`]}
+                  dispatch={dispatch}
+                />
+              ))}
+            </Table>
           )}
           <CellError message={errors.lines} />
           <div className="grid max-w-md gap-1.5">
@@ -259,8 +297,9 @@ export function InvoiceEditor({
               onPick={onAddProduct}
             />
             <p className="text-xs text-muted-foreground">
-              Search active products by code, name or company. A product goes on one line; add its
-              other units on that line.
+              {draft.lines.length >= MAX_INVOICE_LINES
+                ? `This invoice already has the most lines allowed (${MAX_INVOICE_LINES}).`
+                : 'Click the box to see every product, or type a code, name or company and press Enter to take the top match. A product goes on one line; add its other units there.'}
             </p>
           </div>
         </CardContent>

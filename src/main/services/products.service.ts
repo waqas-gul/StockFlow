@@ -100,15 +100,21 @@ export function listProducts(db: Db, input: unknown): ProductListPage {
 
 /**
  * Quick lookup for keyboard selection: every word must match the code, name or company name. An exact code comes
- * first, then codes that start with the text, then names that start with it.
+ * first, then codes that start with the text, then names that start with it. With nothing typed the whole catalogue
+ * comes back by name, so the picker opens on a list to browse instead of on nothing.
  */
 export function searchProducts(db: Db, input: unknown): ProductSearchItem[] {
   const { query, limit, includeInactive } = parseInput(ProductSearchInputSchema, input)
   const clauses: string[] = []
   const params: SqlValue[] = []
   addSearch(query, clauses, params)
-  if (clauses.length === 0) return []
   if (!includeInactive) clauses.push('p.is_active = 1')
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+  if (query === '') {
+    return db
+      .all<ProductRow>(`${SELECT_PRODUCTS} ${where} ORDER BY p.name, p.code, p.id LIMIT ?`, [limit])
+      .map(searchItem)
+  }
   const prefix = `${escapeLike(query)}%`
   const rows = db.all<ProductRow & { rank: number }>(
     `SELECT * FROM (
@@ -117,20 +123,24 @@ export function searchProducts(db: Db, input: unknown): ProductSearchItem[] {
          `SELECT CASE WHEN p.code = ? THEN 0 WHEN p.code LIKE ? ESCAPE '\\' THEN 1
                       WHEN p.name LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END AS rank, p.id,`
        )}
-       WHERE ${clauses.join(' AND ')}
+       ${where}
      )
      ORDER BY rank, CASE WHEN rank <= 1 THEN code END, name, code, id
      LIMIT ?`,
     [query, prefix, prefix, ...params, limit]
   )
-  return rows.map((row) => ({
+  return rows.map(searchItem)
+}
+
+function searchItem(row: ProductRow): ProductSearchItem {
+  return {
     id: row.id,
     code: row.code,
     name: row.name,
     companyName: row.company_name,
     packingLabel: row.packing_label,
     isActive: row.is_active === 1
-  }))
+  }
 }
 
 /** One product with its units, stock and lock state. */

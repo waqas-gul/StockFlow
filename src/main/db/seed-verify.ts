@@ -39,8 +39,28 @@ const HIGHLIGHTS: ReadonlyArray<readonly [string, string]> = [
     'Expenses (active)',
     `SELECT count(*) || ' worth ' || (sum(amount_minor) / 100) AS value FROM expenses WHERE status = 'ACTIVE'`
   ],
+  [
+    'Suppliers owed / advance / settled',
+    `SELECT sum(balance_minor > 0) || ' / ' || sum(balance_minor < 0) || ' / ' || sum(balance_minor = 0) AS value
+     FROM v_supplier_balance`
+  ],
+  [
+    'Receipts on account / cash',
+    `SELECT sum(supplier_id IS NOT NULL) || ' / ' || sum(supplier_id IS NULL) AS value FROM stock_receipts`
+  ],
+  [
+    'Purchases / paid to suppliers',
+    `SELECT ((SELECT sum(total_cost_minor) FROM stock_receipts WHERE status = 'POSTED' AND supplier_id IS NOT NULL) / 100)
+            || ' / ' ||
+            ((SELECT sum(amount_minor) FROM supplier_payments WHERE status = 'POSTED') / 100) AS value`
+  ],
+  [
+    'Supplier payments posted / void',
+    `SELECT sum(status = 'POSTED') || ' / ' || sum(status = 'VOID') AS value FROM supplier_payments`
+  ],
   ['Stock movement types', `SELECT group_concat(DISTINCT type) AS value FROM stock_movements`],
-  ['Ledger entry types', `SELECT group_concat(DISTINCT type) AS value FROM customer_ledger`],
+  ['Customer ledger types', `SELECT group_concat(DISTINCT type) AS value FROM customer_ledger`],
+  ['Supplier ledger types', `SELECT group_concat(DISTINCT type) AS value FROM supplier_ledger`],
   ['Payment methods', `SELECT group_concat(DISTINCT method) AS value FROM payments`]
 ]
 
