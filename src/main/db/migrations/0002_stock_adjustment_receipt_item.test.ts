@@ -72,7 +72,7 @@ describe('0002_stock_adjustment_receipt_item: definition', () => {
   it('is schema version 2, registered after 0001', () => {
     expect(stockAdjustmentReceiptItemMigration.version).toBe(2)
     expect(stockAdjustmentReceiptItemMigration.name).toBe('0002_stock_adjustment_receipt_item')
-    expect(migrations).toEqual([initialMigration, stockAdjustmentReceiptItemMigration])
+    expect(migrations.slice(0, 2)).toEqual([initialMigration, stockAdjustmentReceiptItemMigration])
   })
 
   it('pins the SHA-256 checksum of its SQL script, with LF line endings and no floating-point types', () => {
@@ -99,7 +99,11 @@ describe('0002_stock_adjustment_receipt_item: upgrading a schema 1 database', ()
     const receiptsBefore = before.all('SELECT * FROM stock_receipts ORDER BY id')
     before.close()
 
-    const ctx = testContext(temp, { now: () => TEST_TIME })
+    // Up to 0002 only: this test is about 0002 (0003 has its own).
+    const ctx = testContext(temp, {
+      now: () => TEST_TIME,
+      migrations: [initialMigration, stockAdjustmentReceiptItemMigration]
+    })
     const db = temp.track(await initializeDatabase(ctx))
 
     expect(readUserVersion(db)).toBe(2)
@@ -137,10 +141,10 @@ describe('0002_stock_adjustment_receipt_item: upgrading a schema 1 database', ()
     expect(verifyDatabaseFile(join(folder, backups[0])).schemaVersion).toBe(1)
   })
 
-  it('migrates a new database from schema 0 straight to 2 without a backup', async () => {
+  it('migrates a new database from schema 0 straight to the latest schema without a backup', async () => {
     const ctx = testContext(temp)
     const db = await createSchemaDatabase(temp)
-    expect(readUserVersion(db)).toBe(2)
+    expect(readUserVersion(db)).toBe(migrations.length)
     const folder = backupFolder(ctx.paths, 'pre-migration')
     expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([])
   })

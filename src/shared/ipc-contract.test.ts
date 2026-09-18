@@ -82,9 +82,31 @@ import type {
   ReportPeriod,
   SalesReport,
   SalesReportInput,
-  StockReport
+  StockReport,
+  SupplierBalancesReport
 } from './reports'
 import type { EditableSettingsPatch, SettingsView } from './settings'
+import type {
+  DuplicateSupplierPaymentCheck,
+  Supplier,
+  SupplierBalanceAdjustmentInput,
+  SupplierBalanceAdjustmentResult,
+  SupplierCreateInput,
+  SupplierLedger,
+  SupplierLedgerInput,
+  SupplierListInput,
+  SupplierListItem,
+  SupplierPaymentCreateInput,
+  SupplierPaymentDetail,
+  SupplierPaymentDuplicateCheckInput,
+  SupplierPaymentListInput,
+  SupplierPaymentSaveResult,
+  SupplierPaymentSummary,
+  SupplierPaymentVoidInput,
+  SupplierPaymentVoidResult,
+  SupplierSearchInput,
+  SupplierUpdateInput
+} from './suppliers'
 import type {
   AdjustmentListInput,
   PostingFloor,
@@ -156,6 +178,19 @@ const CHANNELS = [
   'payments:create',
   'payments:checkDuplicate',
   'payments:void',
+  'suppliers:list',
+  'suppliers:get',
+  'suppliers:create',
+  'suppliers:update',
+  'suppliers:setActive',
+  'suppliers:ledger',
+  'suppliers:adjustBalance',
+  'suppliers:search',
+  'supplierPayments:list',
+  'supplierPayments:get',
+  'supplierPayments:create',
+  'supplierPayments:checkDuplicate',
+  'supplierPayments:void',
   'invoices:context',
   'invoices:post',
   'invoices:list',
@@ -180,12 +215,14 @@ const CHANNELS = [
   'reports:productSales',
   'reports:stock',
   'reports:customerBalances',
+  'reports:supplierBalances',
   'reports:expenses',
   'dashboard:get'
 ] as const
 
 describe('IPC contract', () => {
-  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B, 10 and 11 calls and the Dashboard call', () => {
+  it('allow-lists exactly the Phase 3A, 4B, 5, 6, 7, 8B, 9A, 9B, 10 and 11 calls, the Dashboard call and the supplier calls', () => {
+    expect(ipcCalls).toHaveLength(81)
     expect(ipcCalls.map((call) => call.channel)).toEqual(CHANNELS)
     expect(ipcCalls[0]).toEqual({ domain: 'app', action: 'info', channel: 'app:info' })
     expect(ipcCalls.at(-1)).toEqual({
@@ -226,6 +263,8 @@ describe('IPC contract', () => {
       | 'stock'
       | 'customers'
       | 'payments'
+      | 'suppliers'
+      | 'supplierPayments'
       | 'invoices'
       | 'expenseCategories'
       | 'expenses'
@@ -353,6 +392,45 @@ describe('IPC contract', () => {
     expectTypeOf<StockFlowApi['payments']['void']>().toEqualTypeOf<
       (input: PaymentVoidInput) => Promise<Result<PaymentVoidResult>>
     >()
+    expectTypeOf<StockFlowApi['suppliers']['list']>().toEqualTypeOf<
+      (input: SupplierListInput) => Promise<Result<ListPage<SupplierListItem>>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['get']>().toEqualTypeOf<
+      (input: number) => Promise<Result<Supplier>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['create']>().toEqualTypeOf<
+      (input: SupplierCreateInput) => Promise<Result<Supplier>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['update']>().toEqualTypeOf<
+      (input: SupplierUpdateInput) => Promise<Result<Supplier>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['setActive']>().toEqualTypeOf<
+      (input: SetActiveInput) => Promise<Result<Supplier>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['ledger']>().toEqualTypeOf<
+      (input: SupplierLedgerInput) => Promise<Result<SupplierLedger>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['adjustBalance']>().toEqualTypeOf<
+      (input: SupplierBalanceAdjustmentInput) => Promise<Result<SupplierBalanceAdjustmentResult>>
+    >()
+    expectTypeOf<StockFlowApi['suppliers']['search']>().toEqualTypeOf<
+      (input: SupplierSearchInput) => Promise<Result<readonly SupplierListItem[]>>
+    >()
+    expectTypeOf<StockFlowApi['supplierPayments']['list']>().toEqualTypeOf<
+      (input: SupplierPaymentListInput) => Promise<Result<ListPage<SupplierPaymentSummary>>>
+    >()
+    expectTypeOf<StockFlowApi['supplierPayments']['get']>().toEqualTypeOf<
+      (input: number) => Promise<Result<SupplierPaymentDetail>>
+    >()
+    expectTypeOf<StockFlowApi['supplierPayments']['create']>().toEqualTypeOf<
+      (input: SupplierPaymentCreateInput) => Promise<Result<SupplierPaymentSaveResult>>
+    >()
+    expectTypeOf<StockFlowApi['supplierPayments']['checkDuplicate']>().toEqualTypeOf<
+      (input: SupplierPaymentDuplicateCheckInput) => Promise<Result<DuplicateSupplierPaymentCheck>>
+    >()
+    expectTypeOf<StockFlowApi['supplierPayments']['void']>().toEqualTypeOf<
+      (input: SupplierPaymentVoidInput) => Promise<Result<SupplierPaymentVoidResult>>
+    >()
     expectTypeOf<StockFlowApi['invoices']['context']>().toEqualTypeOf<
       (input: InvoiceContextInput) => Promise<Result<InvoiceContext>>
     >()
@@ -424,6 +502,9 @@ describe('IPC contract', () => {
     >()
     expectTypeOf<StockFlowApi['reports']['customerBalances']>().toEqualTypeOf<
       () => Promise<Result<CustomerBalancesReport>>
+    >()
+    expectTypeOf<StockFlowApi['reports']['supplierBalances']>().toEqualTypeOf<
+      () => Promise<Result<SupplierBalancesReport>>
     >()
     expectTypeOf<StockFlowApi['reports']['expenses']>().toEqualTypeOf<
       (input: ExpenseReportInput) => Promise<Result<ExpenseReport>>

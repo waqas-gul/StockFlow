@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, LoaderCircle, Lock, Wrench } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { Ban, LoaderCircle, Lock, TriangleAlert, Wrench } from 'lucide-react'
+import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { formatDisplayDate } from '@shared/dates'
+import { PAYMENT_METHOD_LABELS } from '@shared/payments'
 import { ADJUSTMENT_REASON_INFO, REASON_NOTE_MAX, type StockReceiptDetail } from '@shared/stock'
+import { RECEIPT_PAYMENTS_VOID_WARNING } from '@shared/suppliers'
+import { pageLinks } from '@renderer/app/page-links'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -25,7 +28,9 @@ import {
   TableRow
 } from '@renderer/components/ui/table'
 import { receiptQuery, refreshAfterStockChange } from '@renderer/lib/app-queries'
+import { PaymentStatusBadge } from '../payments/PaymentStatusBadge'
 import { formatAmount, type CurrencyFormat } from '../products/product-display'
+import { supplierBalanceClassName, supplierBalanceText } from '../suppliers/supplier-display'
 import { ReceiptStatusBadge } from './ReceiptStatusBadge'
 import { submitVoid, type StockNotifier } from './stock-actions'
 import { adjustmentQuantityText, signedAmount } from './stock-display'
@@ -84,7 +89,27 @@ export function ReceiptDetail({
     <div className="flex flex-col gap-5">
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
         <Detail label="Date" value={formatDisplayDate(receipt.receiptDate)} />
-        <Detail label="Supplier" value={receipt.supplierName} />
+        {receipt.supplierId === null ? (
+          <Detail label="Supplier" value={receipt.supplierName} />
+        ) : (
+          <div>
+            <dt className="text-muted-foreground">Supplier</dt>
+            <dd className="mt-0.5">
+              <Link
+                to={pageLinks.supplier(receipt.supplierId)}
+                className="font-medium underline-offset-4 hover:underline"
+                onClick={onClose}
+              >
+                {receipt.supplierName}
+              </Link>
+              <span className="font-mono text-xs text-muted-foreground">
+                {' '}
+                {receipt.supplierCode}
+              </span>
+            </dd>
+          </div>
+        )}
+        <Detail label="Supplier Bill No" value={receipt.supplierBillNo} />
         <Detail label="Reference" value={receipt.reference} />
         <Detail label="Total cost" value={formatAmount(receipt.totalCostMinor, currency)} />
         <div>
@@ -153,6 +178,8 @@ export function ReceiptDetail({
           </TableBody>
         </Table>
       </div>
+
+      {receipt.supplierId !== null && <SupplierPayments receipt={receipt} currency={currency} />}
 
       {receipt.status === 'POSTED' && receipt.voidable && <VoidReceipt receipt={receipt} />}
       {locked && (
@@ -227,7 +254,59 @@ export function ReceiptDetail({
   )
 }
 
-/** Void available: reverses the receipt's exact quantities and values. */
+/** The supplier payments made with the receipt ("paid now"), and the supplier's current balance. */
+function SupplierPayments({
+  receipt,
+  currency
+}: {
+  receipt: StockReceiptDetail
+  currency: CurrencyFormat
+}): React.JSX.Element {
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold">Supplier Payments With This Receipt</h3>
+        {receipt.supplierBalanceMinor !== null && (
+          <p className="text-sm">
+            <span className="text-muted-foreground">Supplier balance now: </span>
+            <span
+              className={`font-medium tabular-nums ${supplierBalanceClassName(receipt.supplierBalanceMinor)}`}
+            >
+              {supplierBalanceText(receipt.supplierBalanceMinor, currency)}
+            </span>
+          </p>
+        )}
+      </div>
+      {receipt.supplierPayments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nothing was paid with this receipt.</p>
+      ) : (
+        <ul className="rounded-md border text-sm">
+          {receipt.supplierPayments.map((payment) => (
+            <li
+              key={payment.id}
+              className="flex flex-wrap items-center gap-x-3 border-b px-3 py-1.5 last:border-b-0"
+            >
+              <span className="font-mono text-xs">{payment.paymentNo}</span>
+              <span>{formatDisplayDate(payment.paymentDate)}</span>
+              <span
+                className={`tabular-nums ${payment.status === 'VOID' ? 'text-muted-foreground line-through' : ''}`}
+              >
+                {formatAmount(payment.amountMinor, currency)}
+              </span>
+              <span className="text-muted-foreground">{PAYMENT_METHOD_LABELS[payment.method]}</span>
+              {payment.reference && (
+                <span className="text-muted-foreground">{payment.reference}</span>
+              )}
+              <PaymentStatusBadge status={payment.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** Void available: reverses the receipt's exact quantities and values (and, with a supplier, the purchase). */
 function VoidReceipt({ receipt }: { receipt: StockReceiptDetail }): React.JSX.Element {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
@@ -250,8 +329,17 @@ function VoidReceipt({ receipt }: { receipt: StockReceiptDetail }): React.JSX.El
         <span className="text-muted-foreground">
           No other stock activity has touched this receipt&apos;s products, so voiding removes
           exactly what it added.
+          {receipt.supplierId !== null &&
+            receipt.totalCostMinor > 0 &&
+            ' It also removes the purchase from the supplier account.'}
         </span>
       </p>
+      {receipt.supplierPayments.some((payment) => payment.status === 'POSTED') && (
+        <p className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>{RECEIPT_PAYMENTS_VOID_WARNING}</span>
+        </p>
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="grid min-w-72 flex-1 gap-1.5">
           <Label htmlFor="voidReason">Reason for voiding</Label>

@@ -17,13 +17,14 @@ import {
   productSalesReport,
   quantityFormatter,
   salesReport,
-  stockReport
+  stockReport,
+  supplierBalancesReport
 } from './reports.service'
 
 /*
  * The Dashboard (read-only). It is assembled from the existing reports and lists, with their own rules, so every
- * figure matches Reports → Sales, Products, Stock, Customer Balances and Expenses, and the Invoice History, Payments
- * and Expenses pages. The only choices made here are which period, which rows and how many.
+ * figure matches Reports → Sales, Products, Stock, Customer Balances, Supplier Balances and Expenses, and the Invoice
+ * History, Payments and Expenses pages. The only choices made here are which period, which rows and how many.
  */
 
 /** The calendar month of a business date. */
@@ -47,6 +48,7 @@ export function dashboardData(db: Db, now: Date): DashboardData {
   const todaySales = postedSales({ dateFrom: today, dateTo: today })
   const monthSales = postedSales(month)
   const balances = customerBalancesReport(db)
+  const suppliers = supplierBalancesReport(db)
   const stock = stockReport(db)
   const expenses = expenseReport(db, { ...month, page: 1, pageSize: 1, status: 'ACTIVE' })
 
@@ -88,7 +90,11 @@ export function dashboardData(db: Db, now: Date): DashboardData {
       advanceCustomerCount: balances.advanceCount,
       inventoryValueMinor: stock.totalValueMinor,
       activeProductCount: stock.rows.filter((row) => row.isActive).length,
-      lowStockCount: lowStockRows.length
+      lowStockCount: lowStockRows.length,
+      supplierPayablesMinor: suppliers.payablesMinor,
+      dueSupplierCount: suppliers.dueCount,
+      supplierAdvancesMinor: suppliers.advancesMinor,
+      advanceSupplierCount: suppliers.advanceCount
     },
     salesTrend: dailySalesReport(db, {
       dateFrom: addDays(today, 1 - DASHBOARD_TREND_DAYS),
@@ -103,6 +109,17 @@ export function dashboardData(db: Db, now: Date): DashboardData {
     },
     lowStock,
     topProducts: productSalesReport(db, month).rows.slice(0, DASHBOARD_LIST_SIZE),
+    // Highest due first; the stable sort keeps code order for equal balances.
+    suppliersDue: suppliers.rows
+      .filter((row) => row.balanceMinor > 0)
+      .sort((a, b) => b.balanceMinor - a.balanceMinor)
+      .slice(0, DASHBOARD_LIST_SIZE)
+      .map((row) => ({
+        supplierId: row.supplierId,
+        code: row.code,
+        name: row.name,
+        balanceMinor: row.balanceMinor
+      })),
     recentInvoices,
     recentPayments: listPayments(db, { ...recent, status: 'all', method: 'all' }).items,
     recentExpenses: listExpenses(db, { ...recent, group: 'all', status: 'all' }).items,

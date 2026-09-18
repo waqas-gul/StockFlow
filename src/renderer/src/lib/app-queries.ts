@@ -38,8 +38,20 @@ import type {
   ReportPeriod,
   SalesReport,
   SalesReportInput,
-  StockReport
+  StockReport,
+  SupplierBalancesReport
 } from '@shared/reports'
+import type {
+  Supplier,
+  SupplierLedger,
+  SupplierLedgerInput,
+  SupplierListInput,
+  SupplierListItem,
+  SupplierPaymentDetail,
+  SupplierPaymentListInput,
+  SupplierPaymentSummary,
+  SupplierSearchInput
+} from '@shared/suppliers'
 import type { PaymentDetail, PaymentListInput, PaymentSummary } from '@shared/payments'
 import type {
   Product,
@@ -206,9 +218,13 @@ export function stockSummaryQuery(
   })
 }
 
-/** `window.api.stock.postingFloor(...)`: the allowed date range for a stock document of these products. */
+/**
+ * `window.api.stock.postingFloor(...)`: the allowed date range for a stock document of these products (and, for a
+ * supplier purchase, this supplier).
+ */
 export function postingFloorQuery(
-  productIds: readonly number[]
+  productIds: readonly number[],
+  supplierId: number | null = null
 ): UseQueryOptions<
   PostingFloor,
   Error,
@@ -216,8 +232,9 @@ export function postingFloorQuery(
   ReturnType<typeof queryKeys.stock.postingFloor>
 > {
   return queryOptions({
-    queryKey: queryKeys.stock.postingFloor(productIds),
-    queryFn: () => unwrap(window.api.stock.postingFloor({ productIds: [...productIds] })),
+    queryKey: queryKeys.stock.postingFloor(productIds, supplierId),
+    queryFn: () =>
+      unwrap(window.api.stock.postingFloor({ productIds: [...productIds], supplierId })),
     placeholderData: keepPreviousData,
     staleTime: 0
   })
@@ -313,6 +330,113 @@ export function paymentQuery(
     queryFn: () => unwrap(window.api.payments.get(id)),
     staleTime: 0
   })
+}
+
+// --- Suppliers (migration 0003) ----------------------------------------------------------------------------------------
+
+/** `window.api.suppliers.list(...)`: one page of the Suppliers table with balances. */
+export function supplierListQuery(
+  input: SupplierListInput
+): UseQueryOptions<
+  ListPage<SupplierListItem>,
+  Error,
+  ListPage<SupplierListItem>,
+  ReturnType<typeof queryKeys.suppliers.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.suppliers.list(input),
+    queryFn: () => unwrap(window.api.suppliers.list(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.suppliers.get(id)`: always read fresh (the balance, totals and posting-date floor come from the ledger). */
+export function supplierQuery(
+  id: number
+): UseQueryOptions<Supplier, Error, Supplier, ReturnType<typeof queryKeys.suppliers.detail>> {
+  return queryOptions({
+    queryKey: queryKeys.suppliers.detail(id),
+    queryFn: () => unwrap(window.api.suppliers.get(id)),
+    staleTime: 0
+  })
+}
+
+/** `window.api.suppliers.search(...)`: quick supplier lookup. */
+export function supplierSearchQuery(
+  input: SupplierSearchInput
+): UseQueryOptions<
+  readonly SupplierListItem[],
+  Error,
+  readonly SupplierListItem[],
+  ReturnType<typeof queryKeys.suppliers.search>
+> {
+  return queryOptions({
+    queryKey: queryKeys.suppliers.search(input),
+    queryFn: () => unwrap(window.api.suppliers.search(input)),
+    placeholderData: keepPreviousData
+  })
+}
+
+/** `window.api.suppliers.ledger(...)`: one page of a supplier's ledger with the running balance. */
+export function supplierLedgerQuery(
+  input: SupplierLedgerInput
+): UseQueryOptions<
+  SupplierLedger,
+  Error,
+  SupplierLedger,
+  ReturnType<typeof queryKeys.suppliers.ledger>
+> {
+  return queryOptions({
+    queryKey: queryKeys.suppliers.ledger(input),
+    queryFn: () => unwrap(window.api.suppliers.ledger(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.supplierPayments.list(...)`: supplier payments, newest first. */
+export function supplierPaymentListQuery(
+  input: SupplierPaymentListInput
+): UseQueryOptions<
+  ListPage<SupplierPaymentSummary>,
+  Error,
+  ListPage<SupplierPaymentSummary>,
+  ReturnType<typeof queryKeys.supplierPayments.list>
+> {
+  return queryOptions({
+    queryKey: queryKeys.supplierPayments.list(input),
+    queryFn: () => unwrap(window.api.supplierPayments.list(input)),
+    placeholderData: keepPreviousData,
+    staleTime: 0
+  })
+}
+
+/** `window.api.supplierPayments.get(id)`: one supplier payment as saved. */
+export function supplierPaymentQuery(
+  id: number
+): UseQueryOptions<
+  SupplierPaymentDetail,
+  Error,
+  SupplierPaymentDetail,
+  ReturnType<typeof queryKeys.supplierPayments.detail>
+> {
+  return queryOptions({
+    queryKey: queryKeys.supplierPayments.detail(id),
+    queryFn: () => unwrap(window.api.supplierPayments.get(id)),
+    staleTime: 0
+  })
+}
+
+/**
+ * After a supplier, supplier payment, void, balance adjustment or supplier purchase: suppliers (balances, totals),
+ * supplier payments, stock (a receipt shows its payments and the supplier balance) and settings (the currency lock once
+ * financial data exists) are read again.
+ */
+export function refreshAfterSupplierChange(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.supplierPayments.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.stock.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
 }
 
 /** `window.api.invoices.context(...)`: today, the next invoice number (a preview) and the posting-date floor. */
@@ -412,6 +536,9 @@ export function refreshAfterStockChange(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.stock.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.products.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
+  // A supplier purchase, or its void, changes the supplier's balance and totals.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.supplierPayments.all })
 }
 
 /** `window.api.expenseCategories.list()`: every expense category, active or not. */
@@ -522,6 +649,13 @@ export const stockReportQuery = queryOptions<StockReport>({
 export const customerBalancesQuery = queryOptions<CustomerBalancesReport>({
   queryKey: queryKeys.reports.customerBalances,
   queryFn: () => unwrap(window.api.reports.customerBalances()),
+  staleTime: 0
+})
+
+/** `window.api.reports.supplierBalances()`: current supplier balances. */
+export const supplierBalancesQuery = queryOptions<SupplierBalancesReport>({
+  queryKey: queryKeys.reports.supplierBalances,
+  queryFn: () => unwrap(window.api.reports.supplierBalances()),
   staleTime: 0
 })
 

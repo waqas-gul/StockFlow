@@ -38,9 +38,10 @@ export function CompaniesDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Manage Companies</DialogTitle>
+          <DialogTitle>Manage Brands / Companies</DialogTitle>
           <DialogDescription>
-            Companies (brands) group products. An inactive company is not offered for new products,
+            A brand / company is the maker or brand of a product, not the supplier you buy from
+            (suppliers have their own page). An inactive company is not offered for new products,
             but stays on the products that have it.
           </DialogDescription>
         </DialogHeader>

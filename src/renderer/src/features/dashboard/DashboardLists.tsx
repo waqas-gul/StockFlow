@@ -1,6 +1,6 @@
 import { ChartColumn, CircleCheck, FileText, HandCoins, Package, Wallet } from 'lucide-react'
 import { Link } from 'react-router'
-import type { DashboardData, DashboardLowStockItem } from '@shared/dashboard'
+import type { DashboardData, DashboardLowStockItem, DashboardSupplierDue } from '@shared/dashboard'
 import { EXPENSE_GROUP_LABELS } from '@shared/expenses'
 import type { ProductSalesRow } from '@shared/reports'
 import { pageLinks } from '@renderer/app/page-links'
@@ -101,6 +101,62 @@ export function TopProductsPanel({
         </ul>
       ) : (
         <PanelEmpty icon={ChartColumn}>No sales recorded this month.</PanelEmpty>
+      )}
+    </DashboardPanel>
+  )
+}
+
+/** The suppliers the shop owes most, highest first (at most five). */
+export function SuppliersDuePanel({
+  items,
+  count,
+  currency,
+  className
+}: {
+  items: readonly DashboardSupplierDue[]
+  count: number
+  currency: CurrencyFormat
+  className?: string
+}): React.JSX.Element {
+  return (
+    <DashboardPanel
+      title="Suppliers Due"
+      description="What the shop owes, highest first"
+      className={className}
+      footer={
+        <>
+          {count > items.length && (
+            <span className="mr-auto text-muted-foreground">
+              {`Showing ${items.length} of ${count.toLocaleString('en-US')}.`}
+            </span>
+          )}
+          <PanelLink to={pageLinks.suppliers}>View All Suppliers</PanelLink>
+        </>
+      }
+    >
+      {items.length > 0 ? (
+        <ul className="divide-y border-t">
+          {items.map((item) => (
+            <li key={item.supplierId}>
+              <Link
+                to={pageLinks.supplier(item.supplierId)}
+                className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{item.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{item.code}</p>
+                </div>
+                <p className="shrink-0 text-sm font-medium text-amber-700 tabular-nums">
+                  {moneyText(item.balanceMinor, currency)}
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <PanelEmpty icon={CircleCheck} positive>
+          No supplier payments are currently due.
+        </PanelEmpty>
       )}
     </DashboardPanel>
   )

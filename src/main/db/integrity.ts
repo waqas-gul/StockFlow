@@ -12,6 +12,12 @@ import {
   walkInFindings,
   type DocumentFindings
 } from './integrity-documents'
+import {
+  hasSupplierSchema,
+  supplierLedgerFindings,
+  supplierPaymentFindings,
+  supplierPurchaseFindings
+} from './integrity-suppliers'
 import type { Migration } from './migrate'
 import { foreignKeyViolations, integrityProblems } from './verify'
 
@@ -19,7 +25,8 @@ import { foreignKeyViolations, integrityProblems } from './verify'
  * The integrity check engine (plan §7.5): database-level checks plus the invariants that can be checked against
  * the V1 schema, and the document-level checks of integrity-documents.ts (invoice lines and totals, the stock movements
  * and customer account entries of every invoice, payment, receipt and adjustment, the walk-in account, and business
- * dates after today). It only reads and reports; it never fixes anything.
+ * dates after today), and the supplier account checks of integrity-suppliers.ts (migration 0003). It only reads and
+ * reports; it never fixes anything.
  */
 
 export type CheckStatus = 'OK' | 'WARNING' | 'ERROR'
@@ -40,6 +47,9 @@ export type IntegrityCheckId =
   | 'customers.walk-in'
   | 'receipts.stock'
   | 'adjustments.stock'
+  | 'suppliers.ledger'
+  | 'suppliers.purchases'
+  | 'suppliers.payments'
   | 'dates.future'
 
 export interface IntegrityCheckResult {
@@ -81,8 +91,9 @@ interface Finding {
 export function runIntegrityCheck(db: Db, options: IntegrityCheckOptions): IntegrityReport {
   const now = options.now ?? (() => new Date())
   const schemaVersion = readUserVersion(db)
-  // The business checks need the V1 tables, which exist from schema 1.
+  // The business checks need the V1 tables, which exist from schema 1; the supplier checks need migration 0003.
   const hasSchema = schemaVersion >= 1
+  const hasSuppliers = hasSchema && hasSupplierSchema(db)
   const checks = [
     runCheck('sqlite.integrity', 'SQLite integrity check', () => sqliteIntegrity(db)),
     runCheck('sqlite.foreign-keys', 'Foreign keys', () => foreignKeys(db)),
@@ -128,6 +139,24 @@ export function runIntegrityCheck(db: Db, options: IntegrityCheckOptions): Integ
       documents(
         adjustmentStockFindings(db),
         'adjustment(s) checked: each has exactly its own stock movement.'
+      )
+    ),
+    supplierCheck('suppliers.ledger', 'Supplier ledger and balances', hasSuppliers, () =>
+      documents(
+        supplierLedgerFindings(db),
+        'supplier(s) checked: their account entries and balances are consistent.'
+      )
+    ),
+    supplierCheck('suppliers.purchases', 'Supplier purchases', hasSuppliers, () =>
+      documents(
+        supplierPurchaseFindings(db),
+        'supplier receipt(s) checked: each purchase, and each void, is on the supplier account exactly.'
+      )
+    ),
+    supplierCheck('suppliers.payments', 'Supplier payments', hasSuppliers, () =>
+      documents(
+        supplierPaymentFindings(db),
+        'supplier payment(s) checked: each is on the supplier account as expected.'
       )
     ),
     businessCheck('dates.future', 'Business dates', hasSchema, () =>
@@ -418,6 +447,25 @@ function businessCheck(
       title,
       status: 'OK',
       summary: 'Not applicable: the database has no schema yet.',
+      issues: []
+    }
+  }
+  return runCheck(id, title, check)
+}
+
+/** A supplier account check: not applicable to a database from before supplier accounts (schema 0003). */
+function supplierCheck(
+  id: IntegrityCheckId,
+  title: string,
+  applies: boolean,
+  check: () => Finding
+): IntegrityCheckResult {
+  if (!applies) {
+    return {
+      id,
+      title,
+      status: 'OK',
+      summary: 'Not applicable: the database has no supplier accounts yet.',
       issues: []
     }
   }

@@ -33,8 +33,8 @@ import {
   type StockCardRow,
   type StockMovementType,
   type StockPage,
+  type StockReceiptData,
   type StockReceiptDetail,
-  type StockReceiptInput,
   type StockReceiptLine,
   type StockReceiptSummary,
   type StockSummary
@@ -54,6 +54,16 @@ import {
 } from './inventory'
 import { getProduct } from './products.service'
 import { assertCurrencyDigits } from './settings.service'
+import {
+  appendSupplierLedgerEntry,
+  assertSupplierPostingDate,
+  latestSupplierLedgerDate,
+  supplierBalance,
+  supplierLabel,
+  supplierRow,
+  type SupplierRow
+} from './supplier-ledger'
+import { insertSupplierPayment, receiptSupplierPayments } from './supplier-payments.service'
 
 /*
  * Stock In receipts, receipt voids, stock adjustments and the stock card (plan §8).
@@ -67,6 +77,12 @@ import { assertCurrencyDigits } from './settings.service'
  * A receipt can be voided only while no other document has moved any of its products since its first movement (its own
  * lines never lock it). The void reverses each line's exact quantity and value. A locked receipt is corrected with
  * receipt correction adjustments, which name the exact receipt line (migration 0002).
+ *
+ * Supplier accounts (migration 0003): a receipt with a supplier account is a supplier purchase. In the same transaction
+ * it appends a PURCHASE entry of +total to the supplier ledger (none for a zero total) and, when money is paid now, a
+ * real supplier payment with its PAYMENT entry. Its date must satisfy the product floors and the supplier's floor. A
+ * void appends PURCHASE_VOID −total and leaves any payment posted (the money may really have been paid: it stays on the
+ * supplier account as an advance until it is voided separately). Stock corrections never change a supplier account.
  */
 
 interface ReceiptRow {
@@ -74,6 +90,9 @@ interface ReceiptRow {
   receipt_no: string
   receipt_date: string
   supplier_name: string | null
+  supplier_id: number | null
+  supplier_code: string | null
+  supplier_bill_no: string | null
   reference: string | null
   note: string | null
   total_cost_minor: number
@@ -144,10 +163,11 @@ interface AdjustmentRow {
 }
 
 const SELECT_RECEIPTS = `
-  SELECT r.id, r.receipt_no, r.receipt_date, r.supplier_name, r.reference, r.note, r.total_cost_minor, r.status,
-         r.void_reason, r.void_date, r.created_at,
+  SELECT r.id, r.receipt_no, r.receipt_date, r.supplier_name, r.supplier_id, s.code AS supplier_code,
+         r.supplier_bill_no, r.reference, r.note, r.total_cost_minor, r.status, r.void_reason, r.void_date, r.created_at,
          (SELECT count(*) FROM stock_receipt_items WHERE receipt_id = r.id) AS line_count
-  FROM stock_receipts AS r`
+  FROM stock_receipts AS r
+  LEFT JOIN suppliers AS s ON s.id = r.supplier_id`
 
 const SELECT_ADJUSTMENTS = `
   SELECT a.id, a.adjustment_no, a.adjustment_date, a.product_id, p.code AS product_code, p.name AS product_name,
@@ -161,7 +181,10 @@ const SELECT_ADJUSTMENTS = `
 
 // --- Stock In ------------------------------------------------------------------------------------------------------
 
-/** Posts a Stock In receipt: one STOCK_IN movement per line, at the line's exact cost. */
+/**
+ * Posts a Stock In receipt: one STOCK_IN movement per line, at the line's exact cost. With a supplier account it is also
+ * a supplier purchase (PURCHASE +total) with an optional payment made now (a supplier payment and its PAYMENT entry).
+ */
 export function receiveStock(db: Db, input: unknown, now: Date): StockReceiptDetail {
   const receipt = parseInput(StockReceiptInputSchema, input)
   return inventoryTransaction(db, () => {
@@ -171,11 +194,13 @@ export function receiveStock(db: Db, input: unknown, now: Date): StockReceiptDet
     if (saved !== undefined) return readReceipt(db, saved.id)
 
     assertCurrencyDigits(db, receipt.currencyMinorDigits)
+    const supplier = receipt.supplierId === null ? null : purchaseSupplier(db, receipt.supplierId)
     const productIds = unique(receipt.lines.map((line) => line.productId))
-    assertPostingDate(db, {
+    assertReceiptDate(db, {
       date: receipt.receiptDate,
       today: localDateString(now),
       productIds,
+      supplier,
       field: 'receiptDate'
     })
     const units = purchasableUnits(db, receipt)
@@ -186,17 +211,22 @@ export function receiveStock(db: Db, input: unknown, now: Date): StockReceiptDet
       lineCostMinor: multiplyMinor(line.unitCostMinor, line.quantity)
     }))
     const totalCostMinor = sumMinor(lines.map((line) => line.lineCostMinor))
+    const balanceBefore = supplier === null ? 0 : supplierBalance(db, supplier.id)
 
     const receiptNo = allocateDocumentNumber(db, 'receipt', RECEIPT_NUMBER_PREFIX)
     const id = Number(
       db.run(
-        `INSERT INTO stock_receipts (receipt_no, request_id, receipt_date, supplier_name, reference, note, total_cost_minor)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO stock_receipts (receipt_no, request_id, receipt_date, supplier_name, supplier_id, supplier_bill_no,
+           reference, note, total_cost_minor)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           receiptNo,
           receipt.requestId,
           receipt.receiptDate,
-          receipt.supplierName,
+          // With a supplier account, its name as it is today is the receipt's snapshot.
+          supplier === null ? receipt.supplierName : supplier.name,
+          supplier?.id ?? null,
+          receipt.supplierBillNo,
           receipt.reference,
           receipt.note,
           totalCostMinor
@@ -233,20 +263,126 @@ export function receiveStock(db: Db, input: unknown, now: Date): StockReceiptDet
       })
     })
     assertStockInvariants(db, productIds)
+    if (supplier !== null) {
+      postSupplierPurchase(db, {
+        supplier,
+        receiptId: id,
+        requestId: receipt.requestId,
+        date: receipt.receiptDate,
+        totalCostMinor,
+        paidNow: receipt.paidNow,
+        balanceBefore
+      })
+    }
     return readReceipt(db, id)
   })
 }
 
-/** Receipts, newest first; `search` matches the receipt number, supplier or reference. */
+/**
+ * The supplier side of a supplier-linked receipt, inside its transaction: PURCHASE +total (none for free goods), then
+ * the payment made now, if any, as a real supplier payment (SPAY-) with its PAYMENT −amount entry. The supplier's balance
+ * must then be exactly what it was plus the purchase minus the payment.
+ */
+function postSupplierPurchase(
+  db: Db,
+  purchase: {
+    readonly supplier: SupplierRow
+    readonly receiptId: number
+    readonly requestId: string
+    readonly date: string
+    readonly totalCostMinor: number
+    readonly paidNow: StockReceiptData['paidNow']
+    readonly balanceBefore: number
+  }
+): void {
+  const { supplier, receiptId, date, totalCostMinor, paidNow } = purchase
+  if (totalCostMinor > 0) {
+    appendSupplierLedgerEntry(db, {
+      supplierId: supplier.id,
+      date,
+      type: 'PURCHASE',
+      amountMinor: totalCostMinor,
+      receiptId
+    })
+  }
+  if (paidNow !== null) {
+    insertSupplierPayment(db, {
+      // Not a renderer request id (':' is never in one): a retry of the receipt returns the saved receipt instead.
+      requestId: `receipt:${purchase.requestId}`,
+      supplierId: supplier.id,
+      paymentDate: date,
+      amountMinor: paidNow.amountMinor,
+      method: paidNow.method,
+      reference: paidNow.reference,
+      note: null,
+      receiptId
+    })
+  }
+  const expected = purchase.balanceBefore + totalCostMinor - (paidNow?.amountMinor ?? 0)
+  if (supplierBalance(db, supplier.id) !== expected) {
+    throw new Error('The supplier balance does not match the purchase and payment just posted.')
+  }
+}
+
+/** The supplier of a new purchase: it must exist and be active. */
+function purchaseSupplier(db: Db, supplierId: number): SupplierRow {
+  const supplier = supplierRow(db, supplierId, 'supplierId')
+  if (supplier.is_active === 0) {
+    throw new AppFailure({
+      code: 'FORBIDDEN_STATE',
+      message: `${supplierLabel(supplier)} is inactive. Reactivate the supplier to record a purchase.`,
+      fieldErrors: { supplierId: ['This supplier is inactive.'] }
+    })
+  }
+  return supplier
+}
+
+/**
+ * A receipt's date must satisfy the floor of every product it moves and, with a supplier account, the supplier's floor,
+ * and must not be after today. When both floors block, the later one is reported: that is the earliest allowed date.
+ */
+function assertReceiptDate(
+  db: Db,
+  check: {
+    readonly date: string
+    readonly today: string
+    readonly productIds: readonly number[]
+    readonly supplier: SupplierRow | null
+    readonly field?: string
+  }
+): void {
+  const { date, today, productIds, supplier, field } = check
+  if (supplier === null) {
+    assertPostingDate(db, { date, today, productIds, field })
+    return
+  }
+  const productFloor = latestMovement(db, productIds)?.date ?? null
+  const supplierFloor = latestSupplierLedgerDate(db, supplier.id)
+  // A supplier floor at or before the product floor is satisfied whenever the product floor is.
+  if (supplierFloor !== null && (productFloor === null || supplierFloor > productFloor)) {
+    assertSupplierPostingDate(db, { date, today, supplier, field })
+  }
+  assertPostingDate(db, { date, today, productIds, field })
+}
+
+/**
+ * Receipts, newest first; `search` matches the receipt number, supplier, supplier bill number or reference, and
+ * `supplierId` keeps one supplier account's receipts.
+ */
 export function listReceipts(db: Db, input: unknown): StockPage<StockReceiptSummary> {
-  const { page, pageSize, search } = parseInput(ReceiptListInputSchema, input)
+  const { page, pageSize, search, supplierId } = parseInput(ReceiptListInputSchema, input)
   const clauses: string[] = []
   const params: SqlValue[] = []
   for (const word of searchWords(search)) {
     clauses.push(
-      `(r.receipt_no LIKE ? ESCAPE '\\' OR r.supplier_name LIKE ? ESCAPE '\\' OR r.reference LIKE ? ESCAPE '\\')`
+      `(r.receipt_no LIKE ? ESCAPE '\\' OR r.supplier_name LIKE ? ESCAPE '\\' OR r.supplier_bill_no LIKE ? ESCAPE '\\'
+        OR r.reference LIKE ? ESCAPE '\\')`
     )
-    params.push(word, word, word)
+    params.push(word, word, word, word)
+  }
+  if (supplierId !== null) {
+    clauses.push('r.supplier_id = ?')
+    params.push(supplierId)
   }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
   const total = db.get<{ n: number }>(
@@ -267,7 +403,8 @@ export function getReceipt(db: Db, id: unknown): StockReceiptDetail {
 
 /**
  * Voids a receipt that no other stock activity has touched: one STOCK_IN_VOID per line reverses its exact quantity and
- * value, dated today, so each product returns exactly to its position before the receipt.
+ * value, dated today, so each product returns exactly to its position before the receipt. A supplier-linked receipt
+ * also appends PURCHASE_VOID −total to the supplier ledger; its supplier payments stay posted.
  */
 export function voidReceipt(db: Db, input: unknown, now: Date): StockReceiptDetail {
   const { id, reason } = parseInput(ReceiptVoidInputSchema, input)
@@ -286,6 +423,8 @@ export function voidReceipt(db: Db, input: unknown, now: Date): StockReceiptDeta
     )
     const productIds = unique(items.map((item) => item.product_id))
     assertPostingDate(db, { date: today, today, productIds })
+    const supplier = receipt.supplier_id === null ? null : supplierRow(db, receipt.supplier_id)
+    if (supplier !== null) assertSupplierPostingDate(db, { date: today, today, supplier })
     const locked = laterActivityProducts(db, id)
     if (locked.size > 0) {
       throw new AppFailure({
@@ -316,6 +455,15 @@ export function voidReceipt(db: Db, input: unknown, now: Date): StockReceiptDeta
       [reason, today, id]
     )
     assertStockInvariants(db, productIds)
+    if (supplier !== null && receipt.total_cost_minor > 0) {
+      appendSupplierLedgerEntry(db, {
+        supplierId: supplier.id,
+        date: today,
+        type: 'PURCHASE_VOID',
+        amountMinor: -receipt.total_cost_minor,
+        receiptId: id
+      })
+    }
     return readReceipt(db, id)
   })
 }
@@ -355,7 +503,9 @@ function readReceipt(db: Db, id: number): StockReceiptDetail {
     voidReason: row.void_reason,
     voidDate: row.void_date,
     lines,
-    corrections
+    corrections,
+    supplierPayments: receiptSupplierPayments(db, id),
+    supplierBalanceMinor: row.supplier_id === null ? null : supplierBalance(db, row.supplier_id)
   }
 }
 
@@ -377,6 +527,9 @@ function summaryOf(row: ReceiptRow, voidable: boolean): StockReceiptSummary {
     receiptNo: row.receipt_no,
     receiptDate: row.receipt_date,
     supplierName: row.supplier_name,
+    supplierId: row.supplier_id,
+    supplierCode: row.supplier_code,
+    supplierBillNo: row.supplier_bill_no,
     reference: row.reference,
     totalCostMinor: row.total_cost_minor,
     status: row.status,
@@ -408,7 +561,7 @@ function laterActivityProducts(db: Db, receiptId: number): Set<number> {
 }
 
 /** The active, purchasable unit of each line, or VALIDATION with the problem of every line. */
-function purchasableUnits(db: Db, receipt: StockReceiptInput): UnitRow[] {
+function purchasableUnits(db: Db, receipt: StockReceiptData): UnitRow[] {
   const productIds = unique(receipt.lines.map((line) => line.productId))
   const unitIds = unique(receipt.lines.map((line) => line.unitId))
   const products = new Map(
@@ -887,10 +1040,38 @@ export function stockSummary(db: Db, productId: unknown): StockSummary {
   }
 }
 
-/** The allowed date range for a stock document of these products: from their latest movement to today. */
+/**
+ * The allowed date range for a stock document of these products (and, for a supplier purchase, this supplier): from
+ * the latest movement of the products or the supplier's latest account entry, whichever is later, to today.
+ */
 export function postingFloor(db: Db, input: unknown, now: Date): PostingFloor {
-  const { productIds } = parseInput(PostingFloorInputSchema, input)
+  const { productIds, supplierId } = parseInput(PostingFloorInputSchema, input)
   const floor = latestMovement(db, productIds)
+  const supplier =
+    supplierId === null
+      ? undefined
+      : db.get<{ id: number; code: string; name: string; latest: string | null }>(
+          `SELECT s.id, s.code, s.name, (SELECT max(entry_date) FROM supplier_ledger WHERE supplier_id = s.id) AS latest
+           FROM suppliers AS s WHERE s.id = ?`,
+          [supplierId]
+        )
+  const supplierFloor = supplier?.latest ?? null
+  if (
+    supplier !== undefined &&
+    supplierFloor !== null &&
+    (floor === null || supplierFloor > floor.date)
+  ) {
+    return {
+      today: localDateString(now),
+      earliestDate: supplierFloor,
+      setBy: null,
+      supplierSetBy: {
+        supplierId: supplier.id,
+        supplierCode: supplier.code,
+        supplierName: supplier.name
+      }
+    }
+  }
   const product =
     floor === null
       ? undefined
@@ -903,7 +1084,8 @@ export function postingFloor(db: Db, input: unknown, now: Date): PostingFloor {
     setBy:
       product === undefined
         ? null
-        : { productId: product.id, productCode: product.code, productName: product.name }
+        : { productId: product.id, productCode: product.code, productName: product.name },
+    supplierSetBy: null
   }
 }
 

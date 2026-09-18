@@ -51,7 +51,11 @@ const EMPTY: DashboardData = {
     advanceCustomerCount: 0,
     inventoryValueMinor: 0,
     activeProductCount: 0,
-    lowStockCount: 0
+    lowStockCount: 0,
+    supplierPayablesMinor: 0,
+    dueSupplierCount: 0,
+    supplierAdvancesMinor: 0,
+    advanceSupplierCount: 0
   },
   salesTrend: trend(),
   expenseBreakdown: {
@@ -64,6 +68,7 @@ const EMPTY: DashboardData = {
   },
   lowStock: [],
   topProducts: [],
+  suppliersDue: [],
   recentInvoices: [],
   recentPayments: [],
   recentExpenses: [],
@@ -83,8 +88,17 @@ const BUSY: DashboardData = {
     advanceCustomerCount: 1,
     inventoryValueMinor: 2_700_000,
     activeProductCount: 3,
-    lowStockCount: 7
+    lowStockCount: 7,
+    supplierPayablesMinor: 5_050_000,
+    dueSupplierCount: 3,
+    supplierAdvancesMinor: 70_000,
+    advanceSupplierCount: 1
   },
+  suppliersDue: [
+    { supplierId: 1, code: 'SUP-00001', name: 'ABC Distributors', balanceMinor: 4_000_000 },
+    { supplierId: 5, code: 'SUP-00005', name: 'MNO Agencies', balanceMinor: 900_000 },
+    { supplierId: 2, code: 'SUP-00002', name: 'XYZ Traders', balanceMinor: 150_000 }
+  ],
   salesTrend: trend({
     '2026-08-25': [1, 100_000],
     '2026-09-10': [1, 200_000],
@@ -234,21 +248,22 @@ function hrefs(html: string): string[] {
 }
 
 describe('Dashboard', () => {
-  it('opens with the shop, today and the four quick actions, and no navigation card grid', () => {
+  it('opens with the shop, today and the five quick actions, and no navigation card grid', () => {
     const html = render(BUSY)
     const shown = text(html)
     expect(shown).toContain('Ali Traders Overview of your shop today. Today 17 Sep 2026')
-    expect(shown).toContain('New Invoice Stock In Receive Payment Add Expense')
-    expect(hrefs(html).slice(0, 4)).toEqual([
+    expect(shown).toContain('New Invoice Stock In Receive Payment Pay Supplier Add Expense')
+    expect(hrefs(html).slice(0, 5)).toEqual([
       '/invoices/new',
       '/stock/in',
       '/payments?receive=1',
+      '/suppliers?pay=1',
       '/expenses?add=1'
     ])
     expect(shown).not.toMatch(/Choose what to do|Stock Adjustments|Settings|placeholder/i)
   })
 
-  it('shows the six figures from the overview', () => {
+  it('shows the seven figures from the overview', () => {
     const shown = text(render(BUSY))
     for (const figure of [
       'Today Sales Rs 9,900.00 1 invoice today',
@@ -256,10 +271,26 @@ describe('Dashboard', () => {
       'Receivables Rs 10,900.00 1 customer owes money',
       'Customer Advances Rs 950.00 1 customer with credit',
       'Inventory Value Rs 27,000.00 3 active products',
-      'Stock Alerts 7 Products Low or out of stock'
+      'Stock Alerts 7 Products Low or out of stock',
+      // Payables are never reduced by supplier advances, which get their own small line.
+      'Supplier Payables Rs 50,500.00 3 suppliers due Rs 700.00 supplier advances'
     ]) {
       expect(shown).toContain(figure)
     }
+    expect(text(render(EMPTY))).toContain('Supplier Payables Rs 0.00 0 suppliers due')
+    expect(text(render(EMPTY))).not.toContain('supplier advances')
+  })
+
+  it('lists the suppliers due, highest first, each linking to its supplier page', () => {
+    const html = render(BUSY)
+    const shown = text(html)
+    expect(shown).toContain(
+      'Suppliers Due What the shop owes, highest first ABC Distributors SUP-00001 Rs 40,000.00 MNO Agencies SUP-00005 Rs 9,000.00 XYZ Traders SUP-00002 Rs 1,500.00'
+    )
+    expect(hrefs(html)).toEqual(
+      expect.arrayContaining(['/suppliers/1', '/suppliers/5', '/suppliers/2', '/suppliers'])
+    )
+    expect(text(render(EMPTY))).toContain('No supplier payments are currently due.')
   })
 
   it('draws the last 7 days of sales by default, with a readable axis and a summary', () => {
@@ -367,7 +398,7 @@ describe('Dashboard', () => {
     const shown = text(html)
     expect(html).toContain('aria-busy="true"')
     expect(html).toContain('data-slot="skeleton"')
-    expect(shown).toContain('New Invoice Stock In Receive Payment Add Expense')
+    expect(shown).toContain('New Invoice Stock In Receive Payment Pay Supplier Add Expense')
     expect(shown).not.toMatch(/Rs \d|No sales|No expenses/)
   })
 })

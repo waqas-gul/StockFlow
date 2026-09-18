@@ -1,20 +1,30 @@
 import { z } from 'zod'
 import { isCalendarDate } from '@shared/dates'
 import { formatMoney, parseMoney } from '@shared/domain'
+import { PAYMENT_METHODS, type PaymentMethod } from '@shared/payments'
 import type { ProductUnit } from '@shared/products'
 import {
   MAX_RECEIPT_LINES,
   MAX_STOCK_QUANTITY,
   NOTE_MAX,
+  PAID_NOW_REFERENCE_MAX,
   REFERENCE_MAX,
-  SUPPLIER_NAME_MAX,
+  SUPPLIER_BILL_NO_MAX,
   type StockReceiptInput
 } from '@shared/stock'
-import { optionalText, requiredMoneyText, wholeNumberText } from '@renderer/lib/form-text'
+import {
+  moneyText,
+  optionalText,
+  requiredMoneyText,
+  wholeNumberText
+} from '@renderer/lib/form-text'
 
 /*
  * The Stock In receipt form. Quantities and costs are typed as text and parsed with the Phase 2 parsers; the base
  * quantity and line cost shown per line are previews, and the main process computes and checks them again.
+ *
+ * With a supplier account the receipt is a supplier purchase: its total is added to what the shop owes the supplier,
+ * and "Paid Now" records a real supplier payment with it. Without one the receipt only adds stock.
  */
 
 export interface ReceiptLineRow {
@@ -31,14 +41,22 @@ export interface ReceiptLineRow {
 
 export interface ReceiptFormValues {
   receiptDate: string
-  supplierName: string
+  /** The supplier account; null for stock received without one. */
+  supplierId: number | null
+  /** "SUP-00001 ABC Distributors", shown in the picker. */
+  supplierLabel: string
+  supplierBillNo: string
   reference: string
   note: string
+  /** Blank or 0: nothing paid now. */
+  paidNowAmount: string
+  paidNowMethod: PaymentMethod
+  paidNowReference: string
   lines: ReceiptLineRow[]
 }
 
 /** What the form produces: the receipt input without the request id and the currency check. */
-export type ReceiptDraft = Omit<StockReceiptInput, 'requestId' | 'currencyMinorDigits'>
+export type ReceiptDraft = Omit<Required<StockReceiptInput>, 'requestId' | 'currencyMinorDigits'>
 
 let rowCounter = 0
 
@@ -54,12 +72,20 @@ export function newReceiptLine(): ReceiptLineRow {
   }
 }
 
-export function emptyReceiptForm(today: string): ReceiptFormValues {
+export function emptyReceiptForm(
+  today: string,
+  supplier: { readonly id: number; readonly label: string } | null = null
+): ReceiptFormValues {
   return {
     receiptDate: today,
-    supplierName: '',
+    supplierId: supplier?.id ?? null,
+    supplierLabel: supplier?.label ?? '',
+    supplierBillNo: '',
     reference: '',
     note: '',
+    paidNowAmount: '',
+    paidNowMethod: 'CASH',
+    paidNowReference: '',
     lines: [newReceiptLine()]
   }
 }
@@ -124,15 +150,28 @@ export function receiptFormSchema(minorDigits: number): z.ZodType<ReceiptDraft, 
   return z
     .object({
       receiptDate: z.string().refine(isCalendarDate, 'Enter a valid date.'),
-      supplierName: optionalText(SUPPLIER_NAME_MAX),
+      supplierId: z.number().nullable(),
+      supplierLabel: z.string(),
+      supplierBillNo: optionalText(SUPPLIER_BILL_NO_MAX),
       reference: optionalText(REFERENCE_MAX),
       note: optionalText(NOTE_MAX),
+      paidNowAmount: moneyText(minorDigits),
+      paidNowMethod: z.enum(PAYMENT_METHODS, { error: 'Choose the payment method.' }),
+      paidNowReference: optionalText(PAID_NOW_REFERENCE_MAX),
       lines: z
         .array(line)
         .min(1, 'Add at least one product line.')
         .max(MAX_RECEIPT_LINES, `Use at most ${MAX_RECEIPT_LINES} lines.`)
     })
     .transform((values, ctx): ReceiptDraft => {
+      const paidNow = values.paidNowAmount ?? 0
+      if (paidNow > 0 && values.supplierId === null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['paidNowAmount'],
+          message: 'Choose the supplier to record a payment with the receipt.'
+        })
+      }
       values.lines.forEach((row, index) => {
         if (row.productId === null) {
           ctx.addIssue({
@@ -150,9 +189,19 @@ export function receiptFormSchema(minorDigits: number): z.ZodType<ReceiptDraft, 
       })
       return {
         receiptDate: values.receiptDate,
-        supplierName: values.supplierName,
+        supplierId: values.supplierId,
+        supplierName: null,
+        supplierBillNo: values.supplierBillNo,
         reference: values.reference,
         note: values.note,
+        paidNow:
+          paidNow > 0
+            ? {
+                amountMinor: paidNow,
+                method: values.paidNowMethod,
+                reference: values.paidNowReference
+              }
+            : null,
         lines: values.lines.map((row) => ({
           productId: row.productId ?? 0,
           unitId: Number(row.unitId),
@@ -206,7 +255,37 @@ export function receiptTotal(previews: readonly LinePreview[]): number | null {
   return known.length === 0 ? null : known.reduce((total, cost) => total + cost, 0)
 }
 
-const HEADER_FIELDS = new Set(['receiptDate', 'supplierName', 'reference', 'note'])
+/**
+ * The supplier balance before and after the receipt, as typed so far: + the purchase total, − the amount paid now.
+ * Null values while the total or the amount paid is not usable yet.
+ */
+export function projectedSupplierBalance(
+  currentMinor: number,
+  totalMinor: number | null,
+  paidNowText: string,
+  minorDigits: number
+): { readonly paidNowMinor: number | null; readonly afterMinor: number | null } {
+  let paidNowMinor: number | null = 0
+  if (paidNowText.trim() !== '') {
+    const parsed = parseMoney(paidNowText, { minorDigits })
+    paidNowMinor = parsed.ok ? parsed.value : null
+  }
+  return {
+    paidNowMinor,
+    afterMinor:
+      totalMinor === null || paidNowMinor === null ? null : currentMinor + totalMinor - paidNowMinor
+  }
+}
+
+const HEADER_FIELDS = new Set(['receiptDate', 'supplierId', 'supplierBillNo', 'reference', 'note'])
+const PAID_NOW_FIELDS: Readonly<Record<string, string>> = {
+  paidNow: 'paidNowAmount',
+  'paidNow.amountMinor': 'paidNowAmount',
+  'paidNow.method': 'paidNowMethod',
+  'paidNow.reference': 'paidNowReference',
+  // A free-text name is never sent with a supplier account; any error about it is about the supplier.
+  supplierName: 'supplierId'
+}
 const LINE_FIELDS: Readonly<Record<string, string>> = {
   productId: 'productId',
   unitId: 'unitId',
@@ -223,11 +302,13 @@ export function serverReceiptErrors(
     const line = /^lines\.(\d+)\.(\w+)$/.exec(path)
     const target = HEADER_FIELDS.has(path)
       ? path
-      : path === 'lines'
-        ? 'lines.root'
-        : line !== null && LINE_FIELDS[line[2]] !== undefined
-          ? `lines.${line[1]}.${LINE_FIELDS[line[2]]}`
-          : 'root'
+      : PAID_NOW_FIELDS[path] !== undefined
+        ? PAID_NOW_FIELDS[path]
+        : path === 'lines'
+          ? 'lines.root'
+          : line !== null && LINE_FIELDS[line[2]] !== undefined
+            ? `lines.${line[1]}.${LINE_FIELDS[line[2]]}`
+            : 'root'
     for (const message of messages) pairs.push([target, message])
   }
   return pairs

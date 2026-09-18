@@ -109,6 +109,24 @@ const WORDING: Readonly<Record<IntegrityCheckId, CheckWording>> = {
     WARNING: NEEDS_ATTENTION,
     ERROR: 'The stock records of some stock adjustments do not match the adjustments.'
   },
+  'suppliers.ledger': {
+    title: 'Supplier accounts',
+    OK: 'Every supplier account entry is consistent, and every supplier balance matches its entries.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some supplier account entries or balances are not consistent.'
+  },
+  'suppliers.purchases': {
+    title: 'Supplier purchases',
+    OK: 'Every supplier stock receipt, and every void, is on the supplier account exactly.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some supplier stock receipts are missing from the supplier account, or differ from it.'
+  },
+  'suppliers.payments': {
+    title: 'Supplier payments',
+    OK: 'Every supplier payment, and every void, is on the supplier account as expected.',
+    WARNING: NEEDS_ATTENTION,
+    ERROR: 'Some supplier payments are missing from the supplier account, or differ from it.'
+  },
   'dates.future': {
     title: 'Business dates',
     OK: 'No record is dated after today.',

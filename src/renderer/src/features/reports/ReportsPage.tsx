@@ -16,7 +16,11 @@ import {
 import { settingsQuery } from '@renderer/lib/app-queries'
 import { cn } from '@renderer/lib/utils'
 import type { CurrencyFormat } from '../products/product-display'
-import { CustomerBalancesSection, StockSection } from './CurrentReportViews'
+import {
+  CustomerBalancesSection,
+  StockSection,
+  SupplierBalancesSection
+} from './CurrentReportViews'
 import { ExpenseReportSection } from './ExpenseReportView'
 import { ProfitLossSection } from './ProfitLossReportView'
 import {
@@ -36,13 +40,14 @@ export const REPORT_TABS = [
   { id: 'products', label: 'Products', dated: true },
   { id: 'stock', label: 'Stock', dated: false },
   { id: 'customers', label: 'Customer Balances', dated: false },
+  { id: 'suppliers', label: 'Supplier Balances', dated: false },
   { id: 'expenses', label: 'Expenses', dated: true }
 ] as const
 export type ReportTab = (typeof REPORT_TABS)[number]['id']
 
 /**
- * Reports (Phase 11): Profit & Loss, Sales, Products and Expenses for a date range, and current Stock and Customer
- * Balances. Every figure is derived from the saved records when shown; nothing here changes data. `?tab=<id>` (the
+ * Reports (Phase 11): Profit & Loss, Sales, Products and Expenses for a date range, and current Stock, Customer
+ * Balances and Supplier Balances. Every figure is derived from the saved records when shown; nothing here changes data. `?tab=<id>` (the
  * Dashboard's View Sales Report) opens that report.
  */
 export function ReportsPage({
@@ -78,8 +83,8 @@ export function ReportsPage({
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
         <p className="text-sm text-muted-foreground">
-          Calculated from the saved invoices, stock ledger, expenses and customer ledger each time
-          they are shown. Reports never change any data.
+          Calculated from the saved invoices, stock ledger, expenses, and customer and supplier
+          ledgers each time they are shown. Reports never change any data.
         </p>
       </div>
 
@@ -192,6 +197,8 @@ export function ReportsPage({
         <StockSection currency={currency} />
       ) : tab === 'customers' ? (
         <CustomerBalancesSection currency={currency} />
+      ) : tab === 'suppliers' ? (
+        <SupplierBalancesSection currency={currency} />
       ) : (
         <ExpenseReportSection key={periodKey} period={period} currency={currency} />
       )}

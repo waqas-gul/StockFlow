@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import type { BalanceState } from '@shared/customers'
-import type { CustomerBalancesReport, StockLevel, StockReport } from '@shared/reports'
+import { formatDisplayDate } from '@shared/dates'
+import type {
+  CustomerBalancesReport,
+  StockLevel,
+  StockReport,
+  SupplierBalancesReport
+} from '@shared/reports'
 import { Badge } from '@renderer/components/ui/badge'
 import { Input } from '@renderer/components/ui/input'
 import {
@@ -20,10 +26,15 @@ import {
   TableHeader,
   TableRow
 } from '@renderer/components/ui/table'
-import { customerBalancesQuery, stockReportQuery } from '@renderer/lib/app-queries'
+import {
+  customerBalancesQuery,
+  stockReportQuery,
+  supplierBalancesQuery
+} from '@renderer/lib/app-queries'
 import { cn } from '@renderer/lib/utils'
 import { balanceClassName, balanceText } from '../customers/customer-display'
 import type { CurrencyFormat } from '../products/product-display'
+import { supplierBalanceClassName, supplierBalanceText } from '../suppliers/supplier-display'
 import { moneyText, STOCK_LEVEL_LABELS } from './report-display'
 import { FigureCards, ReportCard, ReportMessage } from './ReportParts'
 
@@ -166,6 +177,153 @@ export function StockReportView({
                     </Badge>
                   </TableCell>
                   <TableCell className="pr-4">{row.isActive ? 'Active' : 'Inactive'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </ReportCard>
+    </div>
+  )
+}
+
+// --- Supplier balances ----------------------------------------------------------------------------------------------------
+
+export function SupplierBalancesSection({
+  currency
+}: {
+  currency: CurrencyFormat
+}): React.JSX.Element {
+  const { data, error } = useQuery(supplierBalancesQuery)
+  if (error) return <ReportMessage error>{error.message}</ReportMessage>
+  if (!data) return <ReportMessage>Loading…</ReportMessage>
+  return <SupplierBalancesReportView report={data} currency={currency} />
+}
+
+const STATE_LABELS: Readonly<Record<BalanceState, string>> = {
+  DUE: 'Due',
+  ADVANCE: 'Advance',
+  SETTLED: 'Settled'
+}
+
+export function SupplierBalancesReportView({
+  report,
+  currency
+}: {
+  report: SupplierBalancesReport
+  currency: CurrencyFormat
+}): React.JSX.Element {
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<BalanceFilter>('all')
+  const money = (minor: number): string => moneyText(minor, currency)
+  const rows = report.rows.filter(
+    (row) =>
+      matches(search, row.code, row.name, row.phone) && (filter === 'all' || row.state === filter)
+  )
+  const date = (value: string | null): string => (value === null ? '—' : formatDisplayDate(value))
+  return (
+    <div className="flex flex-col gap-4">
+      <FigureCards
+        columns={3}
+        figures={[
+          {
+            label: 'Total Supplier Payables',
+            value: money(report.payablesMinor),
+            strong: true,
+            note: 'What the shop owes its suppliers'
+          },
+          {
+            label: 'Supplier Advances',
+            value: money(report.advancesMinor),
+            strong: true,
+            note: 'Paid to suppliers beyond what was owed'
+          },
+          {
+            label: 'Suppliers',
+            value: report.rows.length.toLocaleString('en-US'),
+            note: `${report.dueCount.toLocaleString('en-US')} due · ${report.advanceCount.toLocaleString('en-US')} advance · ${report.settledCount.toLocaleString('en-US')} settled`
+          }
+        ]}
+      />
+      <ReportCard
+        title="Supplier Balances"
+        description="From the supplier ledger, as of now. Supplier purchases and payments are not part of the Profit & Loss."
+        actions={
+          <>
+            <Input
+              type="search"
+              aria-label="Search suppliers"
+              placeholder="Search code, name or phone"
+              className="w-64"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Select
+              value={filter}
+              onValueChange={(value) => {
+                if (value !== '') setFilter(value as BalanceFilter)
+              }}
+            >
+              <SelectTrigger aria-label="Supplier balance filter" className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All balances</SelectItem>
+                <SelectItem value="DUE">Due</SelectItem>
+                <SelectItem value="ADVANCE">Advance</SelectItem>
+                <SelectItem value="SETTLED">Settled</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        }
+      >
+        {rows.length === 0 ? (
+          <ReportMessage>
+            {report.rows.length === 0
+              ? 'No suppliers yet.'
+              : 'No suppliers match the search or filter.'}
+          </ReportMessage>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">Code</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead className="text-right">Current Balance</TableHead>
+                <TableHead>Due / Advance</TableHead>
+                <TableHead>Last Purchase</TableHead>
+                <TableHead className="pr-4">Last Payment</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.supplierId}
+                  className={cn(!row.isActive && 'text-muted-foreground')}
+                >
+                  <TableCell className="pl-4">{row.code}</TableCell>
+                  <TableCell className="max-w-64 whitespace-normal">
+                    <Link
+                      to={`/suppliers/${row.supplierId}`}
+                      className="font-medium hover:underline"
+                    >
+                      {row.name}
+                    </Link>
+                    {!row.isActive && <span className="text-xs"> (inactive)</span>}
+                  </TableCell>
+                  <TableCell>{row.phone ?? '—'}</TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right tabular-nums',
+                      supplierBalanceClassName(row.balanceMinor)
+                    )}
+                  >
+                    {supplierBalanceText(row.balanceMinor, currency)}
+                  </TableCell>
+                  <TableCell>{STATE_LABELS[row.state]}</TableCell>
+                  <TableCell>{date(row.lastPurchaseDate)}</TableCell>
+                  <TableCell className="pr-4">{date(row.lastPaymentDate)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

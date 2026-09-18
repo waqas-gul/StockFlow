@@ -89,9 +89,10 @@ export function assertCurrencyDigits(db: Db, minorDigits: number): void {
 
 /**
  * True once any amount is stored: a unit price or default cost, a stock receipt, adjustment or movement, an invoice
- * with its lines and quantities, a payment, an expense or a customer ledger entry. Amounts are whole minor units, so
- * `currency.minorDigits` must not change after that. The seeded settings, counters, walk-in customer and expense
- * categories hold no amounts, and neither do companies, products, units without prices, or customers.
+ * with its lines and quantities, a payment, an expense, a customer ledger entry, or a supplier payment or supplier
+ * ledger entry. Amounts are whole minor units, so `currency.minorDigits` must not change after that. The seeded
+ * settings, counters, walk-in customer and expense categories hold no amounts, and neither do companies, products,
+ * units without prices, customers or suppliers.
  */
 export function hasMonetaryData(db: Db): boolean {
   const row = db.get<{ found: number }>(
@@ -108,7 +109,9 @@ export function hasMonetaryData(db: Db): boolean {
      OR EXISTS (SELECT 1 FROM invoice_item_quantities)
      OR EXISTS (SELECT 1 FROM payments)
      OR EXISTS (SELECT 1 FROM expenses)
-     OR EXISTS (SELECT 1 FROM customer_ledger) AS found`
+     OR EXISTS (SELECT 1 FROM customer_ledger)
+     OR EXISTS (SELECT 1 FROM supplier_payments)
+     OR EXISTS (SELECT 1 FROM supplier_ledger) AS found`
   )
   return row?.found === 1
 }

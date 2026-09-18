@@ -58,12 +58,14 @@ function text(html: string): string {
 }
 
 describe('Reports page', () => {
-  it('offers the six reports and the period presets, defaulting to Profit & Loss for this month', () => {
+  it('offers the seven reports and the period presets, defaulting to Profit & Loss for this month', () => {
     const html = render('profit-loss', (client) =>
       client.setQueryData(queryKeys.reports.profitLoss(SEPTEMBER), basePl)
     )
     const shown = text(html)
-    expect(shown).toContain('Profit & Loss Sales Products Stock Customer Balances Expenses')
+    expect(shown).toContain(
+      'Profit & Loss Sales Products Stock Customer Balances Supplier Balances Expenses'
+    )
     expect(html).toContain('aria-selected="true"')
     expect(html).toContain('aria-label="Report period"')
     expect(shown).toContain('This Month · 01-Sep-2026 to 30-Sep-2026')

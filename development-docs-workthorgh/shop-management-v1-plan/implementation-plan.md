@@ -228,11 +228,17 @@ needed (F1).**
 
 ### 4.2 Out of scope (V1)
 
-Cloud sync, mobile app, online accounts, multi-user roles/permissions, multiple warehouses, supplier
-accounting (suppliers are **free-text** on stock-in), purchase orders, tax system (GST/VAT), barcode scanning
+Cloud sync, mobile app, online accounts, multi-user roles/permissions, multiple warehouses, purchase orders,
+tax system (GST/VAT), barcode scanning
 (the product-code search field will accept scanner "keyboard" input later with no redesign), e-commerce,
 remote DB/PostgreSQL, Express/HTTP server, automatic updater, logo upload (planned as §18 "later"), full sales
 returns UI (C3), editing posted invoices (C4), and any user-facing negative-stock option (§8.3).
+
+> **Change after Phase 12 (supplier accounts, migration 0003):** supplier accounting was moved into V1. Suppliers
+> (separate from product brands/companies), supplier-linked Stock In, "paid now" and later supplier payments, an
+> append-only supplier ledger, balance adjustments, the Supplier Balances report and the Dashboard payables card are
+> implemented; see `supplier-accounts-implementation-report.md`. Receipts saved before 0003 keep their free-text
+> supplier name and are not linked to any supplier account. Purchase orders and supplier returns remain out of scope.
 
 ### 4.3 Future-proofing without over-engineering
 

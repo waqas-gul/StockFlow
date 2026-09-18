@@ -58,6 +58,20 @@ import {
   StockIdSchema,
   StockReceiptInputSchema
 } from '@shared/stock'
+import {
+  SupplierBalanceAdjustmentInputSchema,
+  SupplierCreateSchema,
+  SupplierIdSchema,
+  SupplierLedgerInputSchema,
+  SupplierListInputSchema,
+  SupplierPaymentCreateSchema,
+  SupplierPaymentDuplicateCheckSchema,
+  SupplierPaymentIdSchema,
+  SupplierPaymentListInputSchema,
+  SupplierPaymentVoidInputSchema,
+  SupplierSearchInputSchema,
+  SupplierUpdateSchema
+} from '@shared/suppliers'
 import { RESTORE_CONFIRMATION } from '@shared/types/backup'
 import { SetActiveSchema } from '@shared/validation'
 import { readAppInfo, type AppInfoSources } from '../app-info'
@@ -100,8 +114,26 @@ import {
   productSalesReport,
   profitLossReport,
   salesReport,
-  stockReport
+  stockReport,
+  supplierBalancesReport
 } from '../services/reports.service'
+import {
+  checkDuplicateSupplierPayment,
+  createSupplierPayment,
+  getSupplierPayment,
+  listSupplierPayments,
+  voidSupplierPayment
+} from '../services/supplier-payments.service'
+import {
+  adjustSupplierBalance,
+  createSupplier,
+  getSupplier,
+  listSuppliers,
+  searchSuppliers,
+  setSupplierActive,
+  supplierLedger,
+  updateSupplier
+} from '../services/suppliers.service'
 import { readPrintableInvoice, type InvoicePrintService } from '../services/invoice-print.service'
 import { voidInvoice } from '../services/invoice-void.service'
 import {
@@ -292,6 +324,59 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
         run: (input) => voidPayment(database.get(), input, ctx.now())
       }
     },
+    suppliers: {
+      list: {
+        input: SupplierListInputSchema,
+        run: (input) => listSuppliers(database.get(), input)
+      },
+      get: { input: SupplierIdSchema, run: (id) => getSupplier(database.get(), id) },
+      create: {
+        input: SupplierCreateSchema,
+        run: (input) => createSupplier(database.get(), input, ctx.now())
+      },
+      update: {
+        input: SupplierUpdateSchema,
+        run: (input) => updateSupplier(database.get(), input)
+      },
+      setActive: {
+        input: SetActiveSchema,
+        run: (input) => setSupplierActive(database.get(), input)
+      },
+      ledger: {
+        input: SupplierLedgerInputSchema,
+        run: (input) => supplierLedger(database.get(), input)
+      },
+      adjustBalance: {
+        input: SupplierBalanceAdjustmentInputSchema,
+        run: (input) => adjustSupplierBalance(database.get(), input, ctx.now())
+      },
+      search: {
+        input: SupplierSearchInputSchema,
+        run: (input) => searchSuppliers(database.get(), input)
+      }
+    },
+    supplierPayments: {
+      list: {
+        input: SupplierPaymentListInputSchema,
+        run: (input) => listSupplierPayments(database.get(), input)
+      },
+      get: {
+        input: SupplierPaymentIdSchema,
+        run: (id) => getSupplierPayment(database.get(), id)
+      },
+      create: {
+        input: SupplierPaymentCreateSchema,
+        run: (input) => createSupplierPayment(database.get(), input, ctx.now())
+      },
+      checkDuplicate: {
+        input: SupplierPaymentDuplicateCheckSchema,
+        run: (input) => checkDuplicateSupplierPayment(database.get(), input)
+      },
+      void: {
+        input: SupplierPaymentVoidInputSchema,
+        run: (input) => voidSupplierPayment(database.get(), input, ctx.now())
+      }
+    },
     invoices: {
       context: {
         input: InvoiceContextInputSchema,
@@ -362,6 +447,7 @@ export function createIpcHandlers(deps: IpcDependencies): IpcHandlers {
       },
       stock: { input: NO_INPUT, run: () => stockReport(database.get()) },
       customerBalances: { input: NO_INPUT, run: () => customerBalancesReport(database.get()) },
+      supplierBalances: { input: NO_INPUT, run: () => supplierBalancesReport(database.get()) },
       expenses: {
         input: ExpenseReportInputSchema,
         run: (input) => expenseReport(database.get(), input)

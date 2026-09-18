@@ -5,8 +5,8 @@ import type { DailySales, ProductSalesRow, ReportPeriod } from './reports'
 
 /*
  * The Dashboard: a read-only overview of the shop, answered by one call (`window.api.dashboard.get()`). Every figure
- * comes from the existing reports and lists (Reports → Sales, Products, Stock, Customer Balances, Expenses; Invoice
- * History, Payments, Expenses), so the Dashboard adds no accounting rule of its own. "Today" is the main process's
+ * comes from the existing reports and lists (Reports → Sales, Products, Stock, Customer Balances, Supplier Balances,
+ * Expenses; Invoice History, Payments, Expenses), so the Dashboard adds no accounting rule of its own. "Today" is the main process's
  * business date. All money is whole minor units.
  */
 
@@ -34,6 +34,21 @@ export interface DashboardSummary {
   readonly activeProductCount: number
   /** Active products at or below their low-stock level (the Products page rule); lowStock lists the first five. */
   readonly lowStockCount: number
+  /** Σ positive supplier balances: what the shop owes its suppliers (Reports → Supplier Balances). */
+  readonly supplierPayablesMinor: number
+  readonly dueSupplierCount: number
+  /** Σ |negative supplier balances|, shown apart: an advance never reduces the payables. */
+  readonly supplierAdvancesMinor: number
+  readonly advanceSupplierCount: number
+}
+
+/** A supplier the shop owes money to. */
+export interface DashboardSupplierDue {
+  readonly supplierId: number
+  readonly code: string
+  readonly name: string
+  /** Above zero. */
+  readonly balanceMinor: number
 }
 
 /** An active product at or below its low-stock level. */
@@ -72,6 +87,8 @@ export interface DashboardData {
   readonly lowStock: readonly DashboardLowStockItem[]
   /** This month's best-selling products by revenue (Reports → Products). */
   readonly topProducts: readonly ProductSalesRow[]
+  /** The suppliers the shop owes most, highest first (at most DASHBOARD_LIST_SIZE). */
+  readonly suppliersDue: readonly DashboardSupplierDue[]
   /** Newest first by business date, void ones included with their status. */
   readonly recentInvoices: readonly InvoiceSummary[]
   readonly recentPayments: readonly PaymentSummary[]

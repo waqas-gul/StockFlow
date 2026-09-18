@@ -5,6 +5,12 @@ import type { PaymentListInput } from '@shared/payments'
 import type { ProductListInput, ProductSearchInput } from '@shared/products'
 import type { ExpenseReportInput, ReportPeriod, SalesReportInput } from '@shared/reports'
 import type { AdjustmentListInput, ReceiptListInput, StockCardInput } from '@shared/stock'
+import type {
+  SupplierLedgerInput,
+  SupplierListInput,
+  SupplierPaymentListInput,
+  SupplierSearchInput
+} from '@shared/suppliers'
 
 /** TanStack Query keys for every query in the renderer, from one factory (plan §15). */
 export const queryKeys = {
@@ -31,7 +37,8 @@ export const queryKeys = {
     adjustments: (input: AdjustmentListInput) => ['stock', 'adjustments', input] as const,
     card: (input: StockCardInput) => ['stock', 'card', input] as const,
     summary: (productId: number) => ['stock', 'summary', productId] as const,
-    postingFloor: (productIds: readonly number[]) => ['stock', 'posting-floor', productIds] as const
+    postingFloor: (productIds: readonly number[], supplierId: number | null = null) =>
+      ['stock', 'posting-floor', productIds, supplierId] as const
   },
   customers: {
     /** Every customer query: invalidated after any customer, payment or balance change. */
@@ -46,6 +53,20 @@ export const queryKeys = {
     all: ['payments'] as const,
     list: (input: PaymentListInput) => ['payments', 'list', input] as const,
     detail: (id: number) => ['payments', 'detail', id] as const
+  },
+  suppliers: {
+    /** Every supplier query: invalidated after any supplier, purchase, supplier payment or balance change. */
+    all: ['suppliers'] as const,
+    list: (input: SupplierListInput) => ['suppliers', 'list', input] as const,
+    detail: (id: number) => ['suppliers', 'detail', id] as const,
+    search: (input: SupplierSearchInput) => ['suppliers', 'search', input] as const,
+    ledger: (input: SupplierLedgerInput) => ['suppliers', 'ledger', input] as const
+  },
+  supplierPayments: {
+    /** Every supplier payment query: invalidated after any supplier payment, void or supplier purchase. */
+    all: ['supplier-payments'] as const,
+    list: (input: SupplierPaymentListInput) => ['supplier-payments', 'list', input] as const,
+    detail: (id: number) => ['supplier-payments', 'detail', id] as const
   },
   invoices: {
     /** Every invoice query: invalidated after an invoice is posted, voided or its dispatch details change. */
@@ -70,6 +91,7 @@ export const queryKeys = {
     productSales: (input: ReportPeriod) => ['reports', 'product-sales', input] as const,
     stock: ['reports', 'stock'] as const,
     customerBalances: ['reports', 'customer-balances'] as const,
+    supplierBalances: ['reports', 'supplier-balances'] as const,
     expenses: (input: ExpenseReportInput) => ['reports', 'expenses', input] as const
   },
   /** The Dashboard overview: read again whenever it is shown (staleTime 0), so no change invalidates it. */

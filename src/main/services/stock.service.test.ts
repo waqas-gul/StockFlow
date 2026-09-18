@@ -505,14 +505,16 @@ describe('posting dates (per-product floor)', () => {
     expect(postingFloor(db, { productIds: [tea.id, sugar.id] }, NOW)).toEqual({
       today: TODAY,
       earliestDate: null,
-      setBy: null
+      setBy: null,
+      supplierSetBy: null
     })
     receive([line(sugar.id, kg(), 1, 1)], { receiptDate: '2026-09-12' })
     receive([line(tea.id, piece(), 1, 1)], { receiptDate: '2026-09-14' })
     expect(postingFloor(db, { productIds: [tea.id, sugar.id, rice.id] }, NOW)).toEqual({
       today: TODAY,
       earliestDate: '2026-09-14',
-      setBy: { productId: tea.id, productCode: 'P-001', productName: 'Tea 950g' }
+      setBy: { productId: tea.id, productCode: 'P-001', productName: 'Tea 950g' },
+      supplierSetBy: null
     })
     expect(postingFloor(db, { productIds: [rice.id] }, NOW).earliestDate).toBeNull()
   })

@@ -157,7 +157,8 @@ describe('0001_initial: definition', () => {
     // put the change in a new migration instead.
     const shipped: Record<number, string> = {
       1: 'sha256:0cc4eb9837b99f71442ed9e8bbd48723f869bcbc8fb2f4d8b0dcd90bee576cc4',
-      2: 'sha256:fb50cb92d9de9f5d2e41866ea02f9192bd5416f2284e33e1e4a7483f6c4a442d'
+      2: 'sha256:fb50cb92d9de9f5d2e41866ea02f9192bd5416f2284e33e1e4a7483f6c4a442d',
+      3: 'sha256:5bcbe1726aee3f75a7240faab2c266ece5b6499e80f6e8ed6950870c0eaad0a0'
     }
     for (const migration of migrations) {
       expect({ version: migration.version, checksum: migration.checksum }).toEqual({

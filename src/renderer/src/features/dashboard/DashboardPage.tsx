@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  Banknote,
   Boxes,
   CalendarDays,
   FilePlus,
@@ -9,6 +10,7 @@ import {
   Plus,
   ReceiptText,
   TriangleAlert,
+  Truck,
   Users,
   Wallet,
   type LucideIcon
@@ -25,7 +27,12 @@ import { cn } from '@renderer/lib/utils'
 import type { CurrencyFormat } from '../products/product-display'
 import { moneyText } from '../reports/report-display'
 import { ExpenseBreakdownPanel, SalesTrendPanel } from './DashboardCharts'
-import { LowStockPanel, RecentActivity, TopProductsPanel } from './DashboardLists'
+import {
+  LowStockPanel,
+  RecentActivity,
+  SuppliersDuePanel,
+  TopProductsPanel
+} from './DashboardLists'
 import { countText, shortDate } from './dashboard-display'
 import { Skeleton } from './DashboardParts'
 
@@ -97,12 +104,16 @@ const QUICK_ACTIONS: ReadonlyArray<{
   { to: pageLinks.newInvoice, label: 'New Invoice', icon: FilePlus, accent: true },
   { to: pageLinks.stockIn, label: 'Stock In', icon: PackagePlus },
   { to: pageLinks.receivePayment, label: 'Receive Payment', icon: HandCoins },
+  { to: pageLinks.paySupplier, label: 'Pay Supplier', icon: Banknote },
   { to: pageLinks.addExpense, label: 'Add Expense', icon: Wallet }
 ]
 
 function QuickActions(): React.JSX.Element {
   return (
-    <nav aria-label="Quick actions" className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
+    <nav
+      aria-label="Quick actions"
+      className="grid grid-cols-2 gap-3 @xl:grid-cols-3 @4xl:grid-cols-5"
+    >
       {QUICK_ACTIONS.map(({ to, label, icon: Icon, accent }) => (
         <Link
           key={to}
@@ -139,13 +150,19 @@ function DashboardBody({
         <SalesTrendPanel trend={data.salesTrend} currency={currency} />
         <ExpenseBreakdownPanel breakdown={data.expenseBreakdown} currency={currency} />
       </div>
-      <div className="grid gap-4 @4xl:grid-cols-2">
+      <div className="grid gap-4 @4xl:grid-cols-2 @6xl:grid-cols-3">
         <LowStockPanel
           items={data.lowStock}
           count={data.summary.lowStockCount}
           activeProductCount={data.summary.activeProductCount}
         />
         <TopProductsPanel rows={data.topProducts} currency={currency} />
+        <SuppliersDuePanel
+          items={data.suppliersDue}
+          count={data.summary.dueSupplierCount}
+          currency={currency}
+          className="@4xl:col-span-2 @6xl:col-span-1"
+        />
       </div>
       <RecentActivity data={data} currency={currency} />
     </>
@@ -191,6 +208,8 @@ function SummaryCards({
     label: string
     value: string
     note: string
+    /** A second, smaller line. */
+    extra?: string
     icon: LucideIcon
     title?: string
     attention?: boolean
@@ -235,11 +254,22 @@ function SummaryCards({
       icon: TriangleAlert,
       title: 'Active products at or below their low-stock level.',
       attention: lowStock > 0
+    },
+    {
+      label: 'Supplier Payables',
+      value: money(summary.supplierPayablesMinor),
+      note: `${countText(summary.dueSupplierCount, 'supplier')} due`,
+      extra:
+        summary.supplierAdvancesMinor > 0
+          ? `${money(summary.supplierAdvancesMinor)} supplier advances`
+          : undefined,
+      icon: Truck,
+      title: 'What the shop owes its suppliers, as in Reports → Supplier Balances.'
     }
   ]
   return (
-    <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-6">
-      {cards.map(({ label, value, note, icon: Icon, title, attention }) => (
+    <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-4">
+      {cards.map(({ label, value, note, extra, icon: Icon, title, attention }) => (
         <Card key={label} className="gap-0 py-0" title={title}>
           <div className="flex flex-col gap-1 p-4">
             <div className="flex items-center justify-between gap-2">
@@ -257,6 +287,7 @@ function SummaryCards({
             </div>
             <p className="text-xl font-semibold tabular-nums [overflow-wrap:anywhere]">{value}</p>
             <p className="text-xs text-muted-foreground">{note}</p>
+            {extra && <p className="text-xs text-emerald-700">{extra}</p>}
           </div>
         </Card>
       ))}
@@ -274,8 +305,8 @@ function DashboardLoading(): React.JSX.Element {
   return (
     <div aria-busy="true" className="flex flex-col gap-5">
       <span className="sr-only">Loading the overview…</span>
-      <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-6">
-        {[0, 1, 2, 3, 4, 5].map((key) => (
+      <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-4">
+        {[0, 1, 2, 3, 4, 5, 6].map((key) => (
           <Card key={key} className="gap-2.5 px-4 py-4">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-6 w-32" />
@@ -287,9 +318,10 @@ function DashboardLoading(): React.JSX.Element {
         {panel('h-52', 0)}
         {panel('h-52', 1)}
       </div>
-      <div className="grid gap-4 @4xl:grid-cols-2">
+      <div className="grid gap-4 @4xl:grid-cols-2 @6xl:grid-cols-3">
         {panel('h-44', 0)}
         {panel('h-44', 1)}
+        <div className="@4xl:col-span-2 @6xl:col-span-1">{panel('h-44', 2)}</div>
       </div>
       <div className="grid gap-4 @3xl:grid-cols-2 @5xl:grid-cols-3">
         {panel('h-36', 0)}

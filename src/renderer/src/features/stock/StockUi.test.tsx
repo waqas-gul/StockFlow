@@ -65,6 +65,10 @@ const receiptSummary: StockReceiptSummary = {
   receiptNo: 'GRN-000001',
   receiptDate: '2026-09-14',
   supplierName: 'Acme Distributor',
+  // A receipt from before supplier accounts: a free-text supplier name only.
+  supplierId: null,
+  supplierCode: null,
+  supplierBillNo: null,
   reference: 'Bill 77',
   totalCostMinor: 2455000,
   status: 'POSTED',
@@ -133,7 +137,9 @@ const receiptDetail: StockReceiptDetail = {
       laterActivity: false
     }
   ],
-  corrections: []
+  corrections: [],
+  supplierPayments: [],
+  supplierBalanceMinor: null
 }
 
 function client(): QueryClient {

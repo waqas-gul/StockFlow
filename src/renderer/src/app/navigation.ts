@@ -8,6 +8,7 @@ import {
   PackagePlus,
   ReceiptText,
   Settings,
+  Truck,
   Users,
   Wallet,
   type LucideIcon
@@ -64,13 +65,13 @@ export const mainNavSections: NavSection[] = [
         path: '/products',
         label: 'Products',
         icon: Package,
-        description: 'Products, companies, units, prices and current stock.'
+        description: 'Products, brands / companies, units, prices and current stock.'
       },
       {
         path: '/stock/in',
         label: 'Stock In',
         icon: PackagePlus,
-        description: 'Record goods received from suppliers, at their cost.'
+        description: 'Record goods received from suppliers, at their cost, and what is paid now.'
       },
       {
         path: '/stock/adjustments',
@@ -99,6 +100,18 @@ export const mainNavSections: NavSection[] = [
     ]
   },
   {
+    title: 'Suppliers',
+    items: [
+      {
+        path: '/suppliers',
+        label: 'Suppliers',
+        icon: Truck,
+        description: 'Supplier accounts: purchases, payments and what the shop owes.',
+        matchChildren: true
+      }
+    ]
+  },
+  {
     title: 'Finance',
     items: [
       {
@@ -111,7 +124,8 @@ export const mainNavSections: NavSection[] = [
         path: '/reports',
         label: 'Reports',
         icon: ChartColumn,
-        description: 'Profit & Loss, sales, products, stock, customer balances and expenses.'
+        description:
+          'Profit & Loss, sales, products, stock, customer and supplier balances, and expenses.'
       }
     ]
   }

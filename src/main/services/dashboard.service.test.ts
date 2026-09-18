@@ -222,8 +222,13 @@ describe('dashboard data', () => {
         advanceCustomerCount: 0,
         inventoryValueMinor: 0,
         activeProductCount: 0,
-        lowStockCount: 0
+        lowStockCount: 0,
+        supplierPayablesMinor: 0,
+        dueSupplierCount: 0,
+        supplierAdvancesMinor: 0,
+        advanceSupplierCount: 0
       },
+      suppliersDue: [],
       expenseBreakdown: {
         ...SEPTEMBER,
         shopMinor: 0,
@@ -296,7 +301,12 @@ describe('dashboard data', () => {
       // Widget 38 × 600.00 + gadget 14 × 300.00.
       inventoryValueMinor: 2_700_000,
       activeProductCount: 3,
-      lowStockCount: 2
+      lowStockCount: 2,
+      // No supplier accounts in this shop: the receipts have none.
+      supplierPayablesMinor: 0,
+      dueSupplierCount: 0,
+      supplierAdvancesMinor: 0,
+      advanceSupplierCount: 0
     })
 
     // The same figures as Reports.

@@ -25,7 +25,8 @@ import {
   type SalesReport,
   type SalesReportInvoice,
   type StockLevel,
-  type StockReport
+  type StockReport,
+  type SupplierBalancesReport
 } from '@shared/reports'
 import { ADJUSTMENT_REASON_INFO, ADJUSTMENT_REASONS, type AdjustmentReason } from '@shared/stock'
 import type { Db } from '../db/adapter'
@@ -49,7 +50,9 @@ import { listExpenses } from './expenses.service'
  * value, which reaches profit through the COGS of later sales (historical COGS stays frozen), so counting them in the
  * period as well would count them twice.
  * VOID invoices and VOID expenses contribute nothing; payments are never revenue; OPENING_STOCK, receipts and their
- * voids are not P&L; sales and their voids are represented by revenue and frozen COGS.
+ * voids are not P&L; sales and their voids are represented by revenue and frozen COGS. Supplier purchases, supplier
+ * payments, their voids and supplier balance adjustments (migration 0003) are payables, never P&L: no query here reads
+ * the supplier tables except the Supplier Balances report.
  *
  * Sums run in SQLite (exact 64-bit integers); every value is then checked to be a safe JavaScript integer, and the
  * derived figures use the checked money helpers. A total too large to show exactly is refused, never rounded.
@@ -630,6 +633,59 @@ export function customerBalancesReport(db: Db): CustomerBalancesReport {
       receivablesMinor,
       advancesMinor,
       netMinor: subtractMinor(receivablesMinor, advancesMinor),
+      dueCount: rows.filter((row) => row.state === 'DUE').length,
+      advanceCount: rows.filter((row) => row.state === 'ADVANCE').length,
+      settledCount: rows.filter((row) => row.state === 'SETTLED').length
+    }
+  })
+}
+
+// --- Supplier balances ----------------------------------------------------------------------------------------------------
+
+/** Every supplier's current balance (Σ supplier ledger), with payables and advances apart. Not part of the P&L. */
+export function supplierBalancesReport(db: Db): SupplierBalancesReport {
+  return report(() => {
+    const rows = db
+      .all<{
+        id: number
+        code: string
+        name: string
+        phone: string | null
+        is_active: number
+        balance_minor: number
+        last_purchase: string | null
+        last_payment: string | null
+      }>(
+        `SELECT s.id, s.code, s.name, s.phone, s.is_active, b.balance_minor,
+                (SELECT max(r.receipt_date) FROM stock_receipts AS r
+                 WHERE r.supplier_id = s.id AND r.status = 'POSTED') AS last_purchase,
+                (SELECT max(p.payment_date) FROM supplier_payments AS p
+                 WHERE p.supplier_id = s.id AND p.status = 'POSTED') AS last_payment
+         FROM suppliers AS s JOIN v_supplier_balance AS b ON b.supplier_id = s.id
+         ORDER BY s.code COLLATE NOCASE, s.id`
+      )
+      .map((row) => {
+        const balanceMinor = exact(row.balance_minor)
+        return {
+          supplierId: row.id,
+          code: row.code,
+          name: row.name,
+          phone: row.phone,
+          isActive: row.is_active === 1,
+          balanceMinor,
+          state: balanceState(balanceMinor),
+          lastPurchaseDate: row.last_purchase,
+          lastPaymentDate: row.last_payment
+        }
+      })
+    return {
+      rows,
+      payablesMinor: sumMinor(
+        rows.filter((row) => row.balanceMinor > 0).map((row) => row.balanceMinor)
+      ),
+      advancesMinor: sumMinor(
+        rows.filter((row) => row.balanceMinor < 0).map((row) => -row.balanceMinor)
+      ),
       dueCount: rows.filter((row) => row.state === 'DUE').length,
       advanceCount: rows.filter((row) => row.state === 'ADVANCE').length,
       settledCount: rows.filter((row) => row.state === 'SETTLED').length

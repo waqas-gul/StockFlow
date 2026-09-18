@@ -1,7 +1,8 @@
 import type { Db } from '../db/adapter'
 
-/** The document counters seeded by 0001 (plan §7.3 `sequences`). */
-export type SequenceName = 'invoice' | 'receipt' | 'payment' | 'adjustment' | 'customer'
+/** The document counters seeded by 0001 (plan §7.3 `sequences`) and 0003 (supplier, supplier_payment). */
+export type SequenceName =
+  'invoice' | 'receipt' | 'payment' | 'adjustment' | 'customer' | 'supplier' | 'supplier_payment'
 
 /**
  * Takes the next value of a sequence inside the caller's transaction: if the document is not saved, the rollback

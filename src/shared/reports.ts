@@ -304,6 +304,39 @@ export interface CustomerBalancesReport {
   readonly settledCount: number
 }
 
+// --- Supplier balances ---------------------------------------------------------------------------------------------------
+
+export interface SupplierBalanceRow {
+  readonly supplierId: number
+  readonly code: string
+  readonly name: string
+  readonly phone: string | null
+  readonly isActive: boolean
+  /** Σ supplier_ledger.amount_minor: positive Due (the shop owes the supplier), negative Advance. */
+  readonly balanceMinor: number
+  readonly state: BalanceState
+  /** The latest POSTED supplier-linked receipt date. */
+  readonly lastPurchaseDate: string | null
+  /** The latest POSTED supplier payment date. */
+  readonly lastPaymentDate: string | null
+}
+
+/**
+ * Current supplier balances. Payables and advances are shown apart, never only netted. Supplier purchases and payments
+ * are balance-sheet movements (inventory and payables): no figure here is part of the Profit & Loss.
+ */
+export interface SupplierBalancesReport {
+  /** By code. */
+  readonly rows: readonly SupplierBalanceRow[]
+  /** Σ positive balances: what the shop owes its suppliers. */
+  readonly payablesMinor: number
+  /** Σ |negative balances|: what suppliers hold of the shop's money. */
+  readonly advancesMinor: number
+  readonly dueCount: number
+  readonly advanceCount: number
+  readonly settledCount: number
+}
+
 // --- Expenses -----------------------------------------------------------------------------------------------------------
 
 export interface ExpenseReport {

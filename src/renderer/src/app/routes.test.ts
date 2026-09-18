@@ -28,6 +28,7 @@ const expectedPaths = [
   '/stock/adjustments',
   '/customers',
   '/payments',
+  '/suppliers',
   '/expenses',
   '/reports',
   '/settings'

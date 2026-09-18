@@ -78,9 +78,31 @@ import type {
   ReportPeriod,
   SalesReport,
   SalesReportInput,
-  StockReport
+  StockReport,
+  SupplierBalancesReport
 } from './reports'
 import type { EditableSettingsPatch, SettingsView } from './settings'
+import type {
+  DuplicateSupplierPaymentCheck,
+  Supplier,
+  SupplierBalanceAdjustmentInput,
+  SupplierBalanceAdjustmentResult,
+  SupplierCreateInput,
+  SupplierLedger,
+  SupplierLedgerInput,
+  SupplierListInput,
+  SupplierListItem,
+  SupplierPaymentCreateInput,
+  SupplierPaymentDetail,
+  SupplierPaymentDuplicateCheckInput,
+  SupplierPaymentListInput,
+  SupplierPaymentSaveResult,
+  SupplierPaymentSummary,
+  SupplierPaymentVoidInput,
+  SupplierPaymentVoidResult,
+  SupplierSearchInput,
+  SupplierUpdateInput
+} from './suppliers'
 import type {
   AdjustmentListInput,
   PostingFloor,
@@ -228,6 +250,37 @@ export const ipcContract = Object.freeze({
     /** Voids a posted payment, dated today, adding its amount back to the balance. */
     void: call<PaymentVoidInput, PaymentVoidResult>()
   }),
+  // Suppliers the shop buys stock from (not product brands/companies) and what the shop owes them.
+  suppliers: Object.freeze({
+    /** One page of the Suppliers table with balances: search and status filter. */
+    list: call<SupplierListInput, ListPage<SupplierListItem>>(),
+    /** One supplier with its balance, purchase and payment totals, and the products bought from it. */
+    get: call<number, Supplier>(),
+    /** Creates a supplier with the next code and an optional opening balance, in one transaction. */
+    create: call<SupplierCreateInput, Supplier>(),
+    /** Saves the profile only; the ledger is never changed. */
+    update: call<SupplierUpdateInput, Supplier>(),
+    /** Activates or deactivates a supplier; suppliers are never deleted. */
+    setActive: call<SetActiveInput, Supplier>(),
+    /** One page of the supplier's ledger with the running balance. */
+    ledger: call<SupplierLedgerInput, SupplierLedger>(),
+    /** Appends a supplier balance correction (ADJUSTMENT) with its reason. */
+    adjustBalance: call<SupplierBalanceAdjustmentInput, SupplierBalanceAdjustmentResult>(),
+    /** Quick lookup by code, name, contact person, phone or city. */
+    search: call<SupplierSearchInput, readonly SupplierListItem[]>()
+  }),
+  supplierPayments: Object.freeze({
+    /** Supplier payments, newest first: search, supplier, date range, status and method filters. */
+    list: call<SupplierPaymentListInput, ListPage<SupplierPaymentSummary>>(),
+    /** One supplier payment as saved. */
+    get: call<number, SupplierPaymentDetail>(),
+    /** Pay Supplier: posts a payment and its ledger entry (a repeated request id returns the saved payment). */
+    create: call<SupplierPaymentCreateInput, SupplierPaymentSaveResult>(),
+    /** Posted payments with the same supplier, date and amount, for the soft duplicate warning. */
+    checkDuplicate: call<SupplierPaymentDuplicateCheckInput, DuplicateSupplierPaymentCheck>(),
+    /** Voids a posted supplier payment, dated today, adding its amount back to what the shop owes. */
+    void: call<SupplierPaymentVoidInput, SupplierPaymentVoidResult>()
+  }),
   invoices: Object.freeze({
     /** The billing screen's context: today, the next invoice number (a preview) and the posting-date floor. */
     context: call<InvoiceContextInput, InvoiceContext>(),
@@ -285,6 +338,8 @@ export const ipcContract = Object.freeze({
     stock: call<void, StockReport>(),
     /** Current balance of every customer, with receivables and advances apart. */
     customerBalances: call<void, CustomerBalancesReport>(),
+    /** Current balance of every supplier, with payables and advances apart. */
+    supplierBalances: call<void, SupplierBalancesReport>(),
     /** Active expense totals for a date range, by group and category, and one page of its expenses. */
     expenses: call<ExpenseReportInput, ExpenseReport>()
   }),

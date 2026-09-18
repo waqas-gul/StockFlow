@@ -22,6 +22,7 @@ import {
   emptyReceiptForm,
   linePreview,
   newReceiptLine,
+  projectedSupplierBalance,
   purchasableUnits,
   receiptFormSchema,
   receiptTotal,
@@ -145,7 +146,7 @@ describe('receipt form', () => {
   })
 
   it('parses typed costs and quantities into the receipt input', () => {
-    const form = values({ supplierName: ' Acme ', reference: '' })
+    const form = values({ reference: '' })
     form.lines[0] = { ...form.lines[0], unitId: '2', quantity: '1,000', unitCost: '2,400.50' }
     const parsed = receiptFormSchema(2).safeParse(form)
     expect(parsed.success).toBe(true)
@@ -153,12 +154,93 @@ describe('receipt form', () => {
     expect(toReceiptInput(parsed.data, 'request-0001', 2)).toEqual({
       requestId: 'request-0001',
       receiptDate: '2026-09-16',
-      supplierName: 'Acme',
+      supplierId: null,
+      supplierName: null,
+      supplierBillNo: null,
       reference: null,
       note: null,
+      paidNow: null,
       currencyMinorDigits: 2,
       lines: [{ productId: 7, unitId: 2, quantity: 1000, unitCostMinor: 240050 }]
     })
+  })
+
+  it('makes a supplier purchase with a bill number and money paid now', () => {
+    const form = values({
+      ...emptyReceiptForm('2026-09-16', { id: 3, label: 'SUP-00003 ABC Distributors' }),
+      supplierBillNo: ' ABC-101 ',
+      paidNowAmount: '20,000',
+      paidNowMethod: 'BANK',
+      paidNowReference: ' TT-55 '
+    })
+    form.lines = values().lines
+    const parsed = receiptFormSchema(2).safeParse(form)
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(toReceiptInput(parsed.data, 'request-0002', 2)).toMatchObject({
+      supplierId: 3,
+      supplierName: null,
+      supplierBillNo: 'ABC-101',
+      paidNow: { amountMinor: 2_000_000, method: 'BANK', reference: 'TT-55' }
+    })
+    // Nothing paid now: no payment at all, never a zero one.
+    for (const nothing of ['', '0', '0.00']) {
+      const none = receiptFormSchema(2).safeParse({ ...form, paidNowAmount: nothing })
+      expect(none.success && none.data.paidNow).toBe(null)
+    }
+  })
+
+  it('refuses money paid now without a supplier account, and an invalid amount', () => {
+    expect(issuesOf(receiptFormSchema(2).safeParse(values({ paidNowAmount: '100' })))).toEqual({
+      paidNowAmount: ['Choose the supplier to record a payment with the receipt.']
+    })
+    const supplier = emptyReceiptForm('2026-09-16', { id: 3, label: 'SUP-00003 X' })
+    expect(
+      issuesOf(
+        receiptFormSchema(2).safeParse(
+          values({ ...supplier, lines: values().lines, paidNowAmount: '1.234' })
+        )
+      )
+    ).toEqual({ paidNowAmount: ['Use at most 2 decimal places.'] })
+  })
+
+  it('projects the supplier balance: current + purchase − paid now', () => {
+    expect(projectedSupplierBalance(1_000_000, 5_000_000, '20,000', 2)).toEqual({
+      paidNowMinor: 2_000_000,
+      afterMinor: 4_000_000
+    })
+    expect(projectedSupplierBalance(0, 5_000_000, '', 2)).toEqual({
+      paidNowMinor: 0,
+      afterMinor: 5_000_000
+    })
+    // More than is owed: a supplier advance (negative).
+    expect(projectedSupplierBalance(0, 1_000_000, '15,000', 2).afterMinor).toBe(-500_000)
+    expect(projectedSupplierBalance(0, null, '1', 2)).toEqual({
+      paidNowMinor: 100,
+      afterMinor: null
+    })
+    expect(projectedSupplierBalance(0, 100, 'x', 2)).toEqual({
+      paidNowMinor: null,
+      afterMinor: null
+    })
+  })
+
+  it('sends paid-now and supplier errors of the main process to their fields', () => {
+    expect(
+      serverReceiptErrors({
+        supplierId: ['This supplier is inactive.'],
+        'paidNow.amountMinor': ['Enter an amount greater than zero.'],
+        paidNow: ['Choose the supplier to record a payment with the receipt.'],
+        'paidNow.method': ['Choose the payment method.'],
+        supplierBillNo: ['Use at most 40 characters.']
+      })
+    ).toEqual([
+      ['supplierId', 'This supplier is inactive.'],
+      ['paidNowAmount', 'Enter an amount greater than zero.'],
+      ['paidNowAmount', 'Choose the supplier to record a payment with the receipt.'],
+      ['paidNowMethod', 'Choose the payment method.'],
+      ['supplierBillNo', 'Use at most 40 characters.']
+    ])
   })
 
   it('accepts a zero cost and refuses a missing product, unit, quantity or cost', () => {

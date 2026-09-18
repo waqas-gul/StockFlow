@@ -727,6 +727,225 @@ describe('customers and payments', () => {
   })
 })
 
+describe('suppliers and supplier payments', () => {
+  // The fixture clock reads 14 Sep 2026: the main process dates payments and voids by it.
+  const TODAY = '2026-09-14'
+
+  function supplierInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      name: 'ABC Distributors',
+      contactPerson: 'Imran',
+      phone: '0300-1112233',
+      address: null,
+      city: 'Lahore',
+      notes: null,
+      opening: { side: 'DUE', amountMinor: 1_000_000, date: TODAY },
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  function supplierPaymentInput(
+    supplierId: number,
+    overrides: Record<string, unknown> = {}
+  ): unknown {
+    return {
+      requestId: 'ipc-supplier-payment-0001',
+      supplierId,
+      paymentDate: TODAY,
+      amountMinor: 400_000,
+      method: 'BANK',
+      reference: 'TT-9',
+      note: null,
+      currencyMinorDigits: 2,
+      ...overrides
+    }
+  }
+
+  async function createdSupplier(): Promise<number> {
+    const created = await call('suppliers:create', supplierInput())
+    expect(created).toMatchObject({
+      ok: true,
+      data: { code: 'SUP-00001', balanceMinor: 1_000_000 }
+    })
+    return (created as { data: { id: number } }).data.id
+  }
+
+  it('creates, reads, lists, searches, edits, adjusts and deactivates a supplier through IPC', async () => {
+    const id = await createdSupplier()
+    await expect(call('suppliers:get', id)).resolves.toMatchObject({
+      ok: true,
+      data: { id, latestEntryDate: TODAY, productsPurchased: [] }
+    })
+    await expect(
+      call('suppliers:list', { page: 1, pageSize: 25, search: 'imran', status: 'active' })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1, items: [{ id }] } })
+    await expect(
+      call('suppliers:search', { query: 'SUP-00001', limit: 10, includeInactive: false })
+    ).resolves.toMatchObject({ ok: true, data: [{ id }] })
+    await expect(
+      call('suppliers:update', {
+        id,
+        name: 'ABC Distributors Ltd',
+        contactPerson: null,
+        phone: null,
+        address: null,
+        city: null,
+        notes: null
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { name: 'ABC Distributors Ltd', balanceMinor: 1_000_000 }
+    })
+    await expect(
+      call('suppliers:adjustBalance', {
+        supplierId: id,
+        entryDate: TODAY,
+        direction: 'DECREASE',
+        amountMinor: 1000,
+        reason: 'Rounding',
+        currencyMinorDigits: 2
+      })
+    ).resolves.toMatchObject({ ok: true, data: { supplier: { balanceMinor: 999_000 } } })
+    await expect(
+      call('suppliers:ledger', { supplierId: id, page: null, pageSize: 50 })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        total: 2,
+        rows: [{ type: 'OPENING' }, { type: 'ADJUSTMENT', runningBalanceMinor: 999_000 }]
+      }
+    })
+    await expect(call('suppliers:setActive', { id, active: false })).resolves.toMatchObject({
+      ok: true,
+      data: { isActive: false, balanceMinor: 999_000 }
+    })
+    await expect(call('reports:supplierBalances')).resolves.toMatchObject({
+      ok: true,
+      data: {
+        payablesMinor: 999_000,
+        advancesMinor: 0,
+        rows: [{ supplierId: id, isActive: false }]
+      }
+    })
+  })
+
+  it('pays, checks, lists, reads and voids a supplier payment through IPC, dated by the main process clock', async () => {
+    const supplierId = await createdSupplier()
+    const paid = await call('supplierPayments:create', supplierPaymentInput(supplierId))
+    expect(paid).toMatchObject({
+      ok: true,
+      data: { paymentNo: 'SPAY-000001', balanceAfterMinor: 600_000, replayed: false }
+    })
+    const paymentId = (paid as { data: { id: number } }).data.id
+    await expect(
+      call('supplierPayments:create', supplierPaymentInput(supplierId))
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { id: paymentId, replayed: true }
+    })
+    await expect(
+      call('supplierPayments:checkDuplicate', {
+        supplierId,
+        paymentDate: TODAY,
+        amountMinor: 400_000
+      })
+    ).resolves.toMatchObject({ ok: true, data: { duplicates: [{ id: paymentId }] } })
+    await expect(
+      call('supplierPayments:list', {
+        page: 1,
+        pageSize: 25,
+        search: '',
+        status: 'all',
+        method: 'all',
+        supplierId,
+        dateFrom: null,
+        dateTo: null
+      })
+    ).resolves.toMatchObject({ ok: true, data: { total: 1 } })
+    await expect(call('supplierPayments:get', paymentId)).resolves.toMatchObject({
+      ok: true,
+      data: { id: paymentId, status: 'POSTED', reference: 'TT-9' }
+    })
+    await expect(
+      call('supplierPayments:void', { id: paymentId, reason: 'Cheque bounced' })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { status: 'VOID', voidDate: TODAY, balanceAfterMinor: 1_000_000 }
+    })
+  })
+
+  it('returns supplier errors as clean AppErrors, never SQLite text', async () => {
+    const supplierId = await createdSupplier()
+    const future = await call(
+      'supplierPayments:create',
+      supplierPaymentInput(supplierId, { paymentDate: '2026-09-15' })
+    )
+    expect(future).toMatchObject({ ok: false, error: { code: 'DATE_NOT_ALLOWED' } })
+    await expect(call('suppliers:get', 42)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' }
+    })
+    const voided = await call('supplierPayments:void', { id: 42, reason: 'Gone' })
+    expect(voided).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } })
+    expect(JSON.stringify([future, voided])).not.toMatch(/SQLITE|constraint/i)
+  })
+
+  it.each<[string, string, unknown]>([
+    ['a supplier with an extra field', 'suppliers:create', { ...supplierInput(), balanceMinor: 1 }],
+    [
+      'an opening balance in a profile edit',
+      'suppliers:update',
+      {
+        id: 1,
+        name: 'X',
+        contactPerson: null,
+        phone: null,
+        address: null,
+        city: null,
+        notes: null,
+        opening: null
+      }
+    ],
+    [
+      'a signed opening amount',
+      'suppliers:create',
+      supplierInput({ opening: { side: 'DUE', amountMinor: -5, date: TODAY } })
+    ],
+    [
+      'a zero supplier payment',
+      'supplierPayments:create',
+      supplierPaymentInput(1, { amountMinor: 0 })
+    ],
+    ['an unknown method', 'supplierPayments:create', supplierPaymentInput(1, { method: 'CARD' })],
+    ['a supplier payment id as text', 'supplierPayments:get', '1'],
+    ['a supplier void without a reason', 'supplierPayments:void', { id: 1 }],
+    [
+      'a supplier ledger page size over 100',
+      'suppliers:ledger',
+      { supplierId: 1, page: 1, pageSize: 500 }
+    ],
+    [
+      'a zero adjustment',
+      'suppliers:adjustBalance',
+      {
+        supplierId: 1,
+        entryDate: TODAY,
+        direction: 'INCREASE',
+        amountMinor: 0,
+        reason: 'x',
+        currencyMinorDigits: 2
+      }
+    ],
+    ['any input to the supplier balances report', 'reports:supplierBalances', { sql: 'SELECT 1' }]
+  ])('refuses %s at the IPC boundary', async (_label, channel, input) => {
+    await expect(call(channel, input)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+  })
+})
+
 describe('invoices', () => {
   // The fixture clock reads 14 Sep 2026: the main process dates the posting floor by it.
   const TODAY = '2026-09-14'

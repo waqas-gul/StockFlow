@@ -127,7 +127,7 @@ export function ProductsPage(): React.JSX.Element {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setCompaniesOpen(true)}>
             <Building2 aria-hidden />
-            Manage Companies
+            Manage Brands / Companies
           </Button>
           <Button onClick={() => setEditor({ mode: 'create' })} disabled={currency === null}>
             <Plus aria-hidden />
@@ -163,7 +163,7 @@ export function ProductsPage(): React.JSX.Element {
               setPage(1)
             }}
           >
-            <SelectTrigger aria-label="Company" className="w-52">
+            <SelectTrigger aria-label="Brand / Company" className="w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

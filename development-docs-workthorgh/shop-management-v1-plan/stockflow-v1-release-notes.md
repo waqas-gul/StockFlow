@@ -12,8 +12,18 @@
 
 Check these in Settings first, because they lock:
 
-- **Currency code, symbol and decimal places** lock once any price, stock, invoice, payment, expense or customer balance has been entered. Old invoices always reprint in the same currency.
+- **Currency code, symbol and decimal places** lock once any price, stock, invoice, payment, expense, customer balance or supplier balance has been entered. Old invoices always reprint in the same currency.
 - **Invoice starting number** locks once the first invoice has been created. Later invoices simply continue the numbering.
+
+## Suppliers and what you owe them
+
+- **Suppliers** (sidebar) are the people and firms you buy stock from. They are not the product's **Brand / Company**.
+- On **Stock In**, choose the supplier: the receipt total is added to what you owe them. Money you pay at delivery goes in **Paid Now**. Pay later with **Pay Supplier** (Suppliers page, a supplier's page or the Dashboard).
+- Paying more than you owe is allowed: the extra shows as a supplier **Advance**.
+- Voiding a receipt removes the purchase from the supplier account but **keeps any payment made with it** (as an advance). If the supplier gave the money back, void that payment too.
+- Stock corrections change stock only. If a supplier's bill changed, use **Adjust Balance** on the supplier's page.
+- Supplier purchases and payments are **not expenses** and never appear in Profit & Loss: the goods reach profit only when they are sold.
+- **Already owe an old supplier?** Receipts entered before this update are not linked to any supplier account. Add the supplier and enter what you owe them **today** as the **Opening Balance**.
 
 ## Where your data is kept
 

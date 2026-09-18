@@ -30,12 +30,15 @@ const TITLES: ReadonlyArray<readonly [id: string, title: string]> = [
   ['customers.walk-in', 'Walk-in customer'],
   ['receipts.stock', 'Stock receipts'],
   ['adjustments.stock', 'Stock adjustments'],
+  ['suppliers.ledger', 'Supplier accounts'],
+  ['suppliers.purchases', 'Supplier purchases'],
+  ['suppliers.payments', 'Supplier payments'],
   ['dates.future', 'Business dates']
 ]
 
 /** What must never reach the screen: SQL, pragmas, internal tables and views, checksums, row ids. */
 const TECHNICAL =
-  /PRAGMA|SELECT|sqlite_|schema_migrations|v_product_stock|v_customer_balance|sha256|rowid|constraint|no such/i
+  /PRAGMA|SELECT|sqlite_|schema_migrations|v_product_stock|v_customer_balance|v_supplier_balance|supplier_ledger|sha256|rowid|constraint|no such/i
 
 let temp: TempDir
 let ctx: TestContext

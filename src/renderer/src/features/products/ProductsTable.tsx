@@ -39,7 +39,7 @@ export function ProductsTable({
         <TableRow>
           <TableHead className="pl-4">Code</TableHead>
           <TableHead>Product</TableHead>
-          <TableHead>Company</TableHead>
+          <TableHead>Brand / Company</TableHead>
           <TableHead>Packing</TableHead>
           <TableHead>Stock</TableHead>
           <TableHead>Wholesale</TableHead>

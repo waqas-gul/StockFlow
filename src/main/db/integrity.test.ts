@@ -43,6 +43,9 @@ const CHECK_IDS: IntegrityCheckId[] = [
   'customers.walk-in',
   'receipts.stock',
   'adjustments.stock',
+  'suppliers.ledger',
+  'suppliers.purchases',
+  'suppliers.payments',
   'dates.future'
 ]
 
@@ -248,8 +251,12 @@ describe('runIntegrityCheck: schema', () => {
       'customers.walk-in': 'OK',
       'receipts.stock': 'OK',
       'adjustments.stock': 'OK',
+      'suppliers.ledger': 'OK',
+      'suppliers.purchases': 'OK',
+      'suppliers.payments': 'OK',
       'dates.future': 'OK'
     })
+    expect(check(result, 'suppliers.ledger').summary).toMatch(/not applicable/i)
     expect(check(result, 'inventory.stock').summary).toMatch(/not applicable/i)
     expect(check(result, 'dates.future').summary).toMatch(/not applicable/i)
   })

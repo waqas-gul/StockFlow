@@ -12,6 +12,7 @@ import {
   type AdjustmentReason,
   type StockAdjustmentResult
 } from '@shared/stock'
+import { SUPPLIER_CORRECTION_NOTE } from '@shared/suppliers'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -261,6 +262,9 @@ export function AdjustmentForm({
               <p className="text-sm text-destructive">
                 This receipt is void and cannot be corrected.
               </p>
+            )}
+            {receipt.data?.status === 'POSTED' && receipt.data.supplierId !== null && (
+              <p className="text-sm text-muted-foreground">{SUPPLIER_CORRECTION_NOTE}</p>
             )}
           </FormField>
         </div>

@@ -65,10 +65,11 @@ describe('production migrations', () => {
     expect(() => validateMigrations(migrations)).not.toThrow()
   })
 
-  it('are 0001_initial and 0002_stock_adjustment_receipt_item, in order', () => {
+  it('are 0001_initial, 0002_stock_adjustment_receipt_item and 0003_supplier_accounts, in order', () => {
     expect(migrations.map((migration) => [migration.version, migration.name])).toEqual([
       [1, '0001_initial'],
-      [2, '0002_stock_adjustment_receipt_item']
+      [2, '0002_stock_adjustment_receipt_item'],
+      [3, '0003_supplier_accounts']
     ])
   })
 })

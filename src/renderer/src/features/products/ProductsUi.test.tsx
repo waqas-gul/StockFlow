@@ -152,7 +152,7 @@ describe('ProductsTable', () => {
       )
     )
     for (const expected of [
-      'Code Product Company Packing Stock Wholesale Retail Status Actions',
+      'Code Product Brand / Company Packing Stock Wholesale Retail Status Actions',
       'P-001 Tea 950g Piece · Box Old Brand (inactive) 1*12*18 0 Piece',
       'Rs 10.00 / Piece +1 more unit',
       '— Active Stock Card Edit Deactivate',
@@ -173,7 +173,7 @@ describe('ProductForm', () => {
       'Basic Information',
       'Code',
       'Name',
-      'Company',
+      'Brand / Company',
       'New company',
       'Packing',
       'Display text only, e.g. 1*12*18. It is never used for units or stock.',
@@ -237,7 +237,7 @@ describe('ProductsPage', () => {
     )
     for (const expected of [
       'Products',
-      'Manage Companies',
+      'Manage Brands / Companies',
       'Add Product',
       'P-001',
       'Tea 950g',

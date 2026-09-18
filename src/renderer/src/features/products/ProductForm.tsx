@@ -186,7 +186,7 @@ function BasicFields({
       </Field>
       <Field
         id="companyId"
-        label="Company"
+        label="Brand / Company"
         error={errors.companyId?.message}
         hint="Optional."
         className="lg:col-span-2"

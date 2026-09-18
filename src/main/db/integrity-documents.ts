@@ -2,6 +2,7 @@ import { WALK_IN_CUSTOMER_CODE } from '@shared/customers'
 import { formatDisplayDate } from '@shared/dates'
 import { calculateInvoiceTotals, type InvoiceTotalsLineInput } from '@shared/invoice-totals'
 import type { Db } from './adapter'
+import { hasSupplierSchema } from './integrity-suppliers'
 
 /*
  * The document-level integrity checks (plan §7.5, final V1 audit). Each one reads the saved documents and the ledgers
@@ -27,8 +28,8 @@ import type { Db } from './adapter'
  * - An adjustment has one movement on its product and date: OPENING_STOCK → OPENING, COUNT_SURPLUS → ADJUST_IN,
  *   RECEIPT_COST_CORRECTION → COST_CORRECTION (quantity 0, value ±value_minor), otherwise IN → ADJUST_IN and
  *   OUT → ADJUST_OUT; IN is +qty_base and +value_minor, OUT is −qty_base and −value_minor.
- * - No business date (invoice, payment, expense, receipt, adjustment, movement, ledger entry, or a void date) is after
- *   the main process's today. created_at timestamps are not business dates.
+ * - No business date (invoice, payment, expense, receipt, adjustment, movement, ledger entry, supplier ledger entry,
+ *   supplier payment, or a void date) is after the main process's today. created_at timestamps are not business dates.
  */
 
 export interface DocumentFindings {
@@ -749,10 +750,33 @@ const BUSINESS_DATES: ReadonlyArray<{
   }
 ]
 
+/** The supplier account dates (migration 0003), checked once the supplier tables exist. */
+const SUPPLIER_DATES: typeof BUSINESS_DATES = [
+  {
+    label: 'Supplier ledger entries',
+    table: 'supplier_ledger',
+    column: 'entry_date',
+    ref: "'supplier entry ' || id"
+  },
+  {
+    label: 'Supplier payments',
+    table: 'supplier_payments',
+    column: 'payment_date',
+    ref: 'payment_no'
+  },
+  {
+    label: 'Supplier payment voids',
+    table: 'supplier_payments',
+    column: 'void_date',
+    ref: 'payment_no'
+  }
+]
+
 export function futureDateFindings(db: Db, today: string): DocumentFindings {
   const issues: string[] = []
   let checked = 0
-  for (const { label, table, column, ref } of BUSINESS_DATES) {
+  const columns = hasSupplierSchema(db) ? [...BUSINESS_DATES, ...SUPPLIER_DATES] : BUSINESS_DATES
+  for (const { label, table, column, ref } of columns) {
     const row = db.get<{
       n: number
       total: number

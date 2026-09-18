@@ -44,7 +44,7 @@ export function ReceiptHistory({
           <Input
             type="search"
             aria-label="Search receipts"
-            placeholder="Search by receipt number, supplier or reference"
+            placeholder="Search by receipt number, supplier, bill number or reference"
             className="pl-8"
             maxLength={100}
             value={search}
@@ -86,6 +86,12 @@ export function ReceiptHistory({
                   <TableCell>{formatDisplayDate(receipt.receiptDate)}</TableCell>
                   <TableCell>
                     {receipt.supplierName ?? <span className="text-muted-foreground">—</span>}
+                    {receipt.supplierBillNo && (
+                      <span className="text-xs text-muted-foreground">
+                        {' '}
+                        · Bill {receipt.supplierBillNo}
+                      </span>
+                    )}
                     {receipt.reference && (
                       <span className="text-xs text-muted-foreground"> · {receipt.reference}</span>
                     )}

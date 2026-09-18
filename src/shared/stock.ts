@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { MAX_MINOR_DIGITS } from './domain/guards'
 import type { ProductUnit } from './products'
+import type { SupplierPaymentSummary } from './suppliers'
 import {
   DateSchema,
   IdSchema,
@@ -25,6 +26,8 @@ export const MAX_RECEIPT_LINES = 100
 /** Largest quantity of one line, in the unit it is entered in. */
 export const MAX_STOCK_QUANTITY = 1_000_000
 export const SUPPLIER_NAME_MAX = 80
+export const SUPPLIER_BILL_NO_MAX = 40
+export const PAID_NOW_REFERENCE_MAX = 60
 export const REFERENCE_MAX = 60
 export const NOTE_MAX = 300
 export const REASON_NOTE_MAX = 300
@@ -160,21 +163,67 @@ export const StockReceiptLineInputSchema = z.strictObject({
 })
 export type StockReceiptLineInput = z.output<typeof StockReceiptLineInputSchema>
 
-/** `window.api.stock.receive(...)`: one Stock In receipt. */
-export const StockReceiptInputSchema = z.strictObject({
-  requestId: RequestIdSchema,
-  receiptDate: DateSchema,
-  supplierName: optionalText(SUPPLIER_NAME_MAX),
-  reference: optionalText(REFERENCE_MAX),
-  note: optionalText(NOTE_MAX),
-  /** The currency decimal places the costs were entered with; must match the current setting. */
-  currencyMinorDigits: CurrencyDigitsSchema,
-  lines: z
-    .array(StockReceiptLineInputSchema)
-    .min(1, 'Add at least one product line.')
-    .max(MAX_RECEIPT_LINES, `Use at most ${MAX_RECEIPT_LINES} lines.`)
+/**
+ * Money paid to the supplier when the goods arrive: a real supplier payment, dated on the receipt date, posted in the
+ * receipt's transaction. More than the receipt total is allowed (the rest is a supplier advance).
+ */
+export const PaidNowSchema = z.strictObject({
+  amountMinor: z
+    .number({ error: 'Enter the amount paid.' })
+    .int('Enter a valid amount.')
+    .min(1, 'Enter an amount greater than zero.')
+    .max(Number.MAX_SAFE_INTEGER, 'The amount is too large.'),
+  method: z.enum(['CASH', 'BANK', 'CHEQUE', 'OTHER'], { error: 'Choose the payment method.' }),
+  reference: optionalText(PAID_NOW_REFERENCE_MAX)
 })
-export type StockReceiptInput = z.output<typeof StockReceiptInputSchema>
+export type PaidNowInput = z.output<typeof PaidNowSchema>
+
+/**
+ * `window.api.stock.receive(...)`: one Stock In receipt. With a supplier account (supplierId) the receipt is a supplier
+ * purchase: its total is added to what the shop owes the supplier, and the supplier's name is saved with the receipt.
+ * Without one, the receipt only adds stock (supplierName is then an optional free-text name, as before migration 0003).
+ */
+export const StockReceiptInputSchema = z
+  .strictObject({
+    requestId: RequestIdSchema,
+    receiptDate: DateSchema,
+    /** The supplier account; null for stock received without one. */
+    supplierId: IdSchema.nullable().default(null),
+    /** Free text, only without a supplier account. */
+    supplierName: optionalText(SUPPLIER_NAME_MAX),
+    /** The supplier's bill (invoice) number. */
+    supplierBillNo: optionalText(SUPPLIER_BILL_NO_MAX).default(null),
+    reference: optionalText(REFERENCE_MAX),
+    note: optionalText(NOTE_MAX),
+    /** Paid to the supplier now; null when nothing is paid now. Needs a supplier account. */
+    paidNow: PaidNowSchema.nullable().default(null),
+    /** The currency decimal places the costs were entered with; must match the current setting. */
+    currencyMinorDigits: CurrencyDigitsSchema,
+    lines: z
+      .array(StockReceiptLineInputSchema)
+      .min(1, 'Add at least one product line.')
+      .max(MAX_RECEIPT_LINES, `Use at most ${MAX_RECEIPT_LINES} lines.`)
+  })
+  .superRefine((input, ctx) => {
+    if (input.supplierId !== null && input.supplierName !== null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['supplierName'],
+        message: 'Not used with a supplier account: the supplier’s name is saved with the receipt.'
+      })
+    }
+    if (input.supplierId === null && input.paidNow !== null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['paidNow'],
+        message: 'Choose the supplier to record a payment with the receipt.'
+      })
+    }
+  })
+/** What the renderer sends: the supplier fields may be left out (no supplier account, nothing paid now). */
+export type StockReceiptInput = z.input<typeof StockReceiptInputSchema>
+/** A receipt as the main process reads it, every field present. */
+export type StockReceiptData = z.output<typeof StockReceiptInputSchema>
 
 /** The adjustment form's fields, before the rules that depend on the reason. */
 export interface AdjustmentShape {
@@ -293,10 +342,12 @@ export type ReceiptVoidInput = z.output<typeof ReceiptVoidInputSchema>
 export const ReceiptListInputSchema = z.strictObject({
   page: PageSchema,
   pageSize: PageSizeSchema,
-  /** Matched against the receipt number, supplier and reference. */
-  search: z.string().trim().max(100, 'Use at most 100 characters.')
+  /** Matched against the receipt number, supplier, supplier bill number and reference. */
+  search: z.string().trim().max(100, 'Use at most 100 characters.'),
+  /** One supplier account's receipts (Supplier → Purchases); null for every receipt. */
+  supplierId: IdSchema.nullable().default(null)
 })
-export type ReceiptListInput = z.output<typeof ReceiptListInputSchema>
+export type ReceiptListInput = z.input<typeof ReceiptListInputSchema>
 
 /** `window.api.stock.listAdjustments(...)`: newest first. */
 export const AdjustmentListInputSchema = z.strictObject({
@@ -316,9 +367,11 @@ export type StockCardInput = z.output<typeof StockCardInputSchema>
 
 /** `window.api.stock.postingFloor(...)`: the earliest date a stock document for these products may have. */
 export const PostingFloorInputSchema = z.strictObject({
-  productIds: z.array(IdSchema).max(MAX_RECEIPT_LINES)
+  productIds: z.array(IdSchema).max(MAX_RECEIPT_LINES),
+  /** The receipt's supplier account: its latest ledger entry is a floor too. */
+  supplierId: IdSchema.nullable().default(null)
 })
-export type PostingFloorInput = z.output<typeof PostingFloorInputSchema>
+export type PostingFloorInput = z.input<typeof PostingFloorInputSchema>
 
 /** A receipt id (`stock.getReceipt`) or product id (`stock.summary`). */
 export const StockIdSchema = IdSchema
@@ -336,7 +389,13 @@ export interface StockReceiptSummary {
   readonly id: number
   readonly receiptNo: string
   readonly receiptDate: string
+  /** The supplier name as saved with the receipt (free text before supplier accounts, or the account's name then). */
   readonly supplierName: string | null
+  /** The supplier account; null for a receipt without one (every receipt saved before migration 0003). */
+  readonly supplierId: number | null
+  /** The supplier account's current code. */
+  readonly supplierCode: string | null
+  readonly supplierBillNo: string | null
   readonly reference: string | null
   readonly totalCostMinor: number
   readonly status: DocumentStatus
@@ -374,6 +433,10 @@ export interface StockReceiptDetail extends StockReceiptSummary {
   readonly lines: readonly StockReceiptLine[]
   /** The adjustments that correct this receipt, oldest first. */
   readonly corrections: readonly StockAdjustmentSummary[]
+  /** Supplier payments made with this receipt ("paid now"), void ones included, oldest first. */
+  readonly supplierPayments: readonly SupplierPaymentSummary[]
+  /** The supplier account's current balance (positive Due, negative Advance); null without a supplier account. */
+  readonly supplierBalanceMinor: number | null
 }
 
 export interface StockAdjustmentSummary {
@@ -450,13 +513,19 @@ export interface StockSummary {
 export interface PostingFloor {
   /** The main process's calendar day: the latest date allowed. */
   readonly today: string
-  /** The earliest date allowed; null when none of the products has stock activity. */
+  /** The earliest date allowed; null when none of the products has stock activity (and the supplier no entries). */
   readonly earliestDate: string | null
-  /** The product whose latest movement sets earliestDate. */
+  /** The product whose latest movement sets earliestDate (null when the supplier sets it). */
   readonly setBy: {
     readonly productId: number
     readonly productCode: string
     readonly productName: string
+  } | null
+  /** The supplier whose latest account entry sets earliestDate, when it is later than every product's. */
+  readonly supplierSetBy: {
+    readonly supplierId: number
+    readonly supplierCode: string
+    readonly supplierName: string
   } | null
 }
 
