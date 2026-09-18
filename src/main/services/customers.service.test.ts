@@ -548,7 +548,25 @@ describe('listCustomers and searchCustomers', () => {
         (item) => item.id
       )
     ).toEqual([zara.id])
-    expect(searchCustomers(db, { query: '  ', limit: 10, includeInactive: true })).toEqual([])
+  })
+
+  it('quick search with nothing typed browses every customer by name', () => {
+    const { zara } = seedCustomers()
+    setCustomerActive(db, { id: zara.id, active: false })
+    const browse = (overrides: Record<string, unknown> = {}): string[] =>
+      searchCustomers(db, { query: '', limit: 10, includeInactive: false, ...overrides }).map(
+        (item) => item.name
+      )
+    expect(browse()).toEqual(['Ali Raza', 'Bilal Ahmed', 'Cash / Walk-in'])
+    expect(browse({ includeInactive: true })).toEqual([
+      'Ali Raza',
+      'Bilal Ahmed',
+      'Cash / Walk-in',
+      'Zara 100% Stores'
+    ])
+    // Blank text counts as nothing typed.
+    expect(browse({ query: '  ' })).toEqual(['Ali Raza', 'Bilal Ahmed', 'Cash / Walk-in'])
+    expect(browse({ limit: 2 })).toEqual(['Ali Raza', 'Bilal Ahmed'])
   })
 })
 

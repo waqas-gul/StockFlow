@@ -118,15 +118,24 @@ export function listCustomers(db: Db, input: unknown): ListPage<CustomerListItem
 
 /**
  * Quick lookup for choosing a customer: every word must match the code, name, shop name, phone or city. An exact code
- * comes first, then codes, names and shop names that start with the text.
+ * comes first, then codes, names and shop names that start with the text. With nothing typed every customer comes back
+ * by name, so the picker opens on a list to browse instead of on nothing.
  */
 export function searchCustomers(db: Db, input: unknown): CustomerListItem[] {
   const { query, limit, includeInactive } = parseInput(CustomerSearchInputSchema, input)
   const clauses: string[] = []
   const params: SqlValue[] = []
   addSearch(query, clauses, params)
-  if (clauses.length === 0) return []
   if (!includeInactive) clauses.push('c.is_active = 1')
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+  if (query === '') {
+    return db
+      .all<CustomerQueryRow>(
+        `${SELECT_CUSTOMERS} ${where} ORDER BY c.name, c.code, c.id LIMIT ?`,
+        [limit]
+      )
+      .map(toListItem)
+  }
   const prefix = `${escapeLike(query)}%`
   const rows = db.all<CustomerQueryRow>(
     `SELECT * FROM (
@@ -136,7 +145,7 @@ export function searchCustomers(db: Db, input: unknown): CustomerListItem[] {
                       WHEN c.name LIKE ? ESCAPE '\\' THEN 2 WHEN c.shop_name LIKE ? ESCAPE '\\' THEN 3
                       ELSE 4 END AS rank, c.id,`
        )}
-       WHERE ${clauses.join(' AND ')}
+       ${where}
      )
      ORDER BY rank, name, code, id
      LIMIT ?`,

@@ -20,9 +20,13 @@ export interface CustomerPickerProps {
   readonly excludeWalkIn?: boolean
 }
 
+/** How many customers the list holds: anything past this is narrowed by typing, not by scrolling. */
+const SEARCH_LIMIT = 50
+
 /**
- * Type a code, name, shop, phone or city, then pick with the mouse or the keyboard (↑ ↓ Enter; Enter alone takes the
- * best match). Only active customers are offered: a new payment needs an active customer.
+ * Opens on the customer list and narrows it as you type a code, name, shop, phone or city; pick with the mouse or the
+ * keyboard (↑ ↓ Enter; Enter alone takes the best match). Only active customers are offered: a new payment needs an
+ * active customer.
  */
 export function CustomerPicker({
   label,
@@ -39,13 +43,10 @@ export function CustomerPicker({
   const editing = text !== null
   const query = useDebouncedValue((text ?? '').trim(), 150)
   const results = useQuery({
-    ...customerSearchQuery({ query, limit: 10, includeInactive: false }),
-    enabled: editing && query !== ''
+    ...customerSearchQuery({ query, limit: SEARCH_LIMIT, includeInactive: false }),
+    enabled: editing
   })
-  const items = pickableCustomers(
-    editing && query !== '' ? (results.data ?? []) : [],
-    excludeWalkIn
-  )
+  const items = pickableCustomers(editing ? (results.data ?? []) : [], excludeWalkIn)
 
   const pick = (item: CustomerListItem | undefined): void => {
     if (item === undefined) return
@@ -131,9 +132,11 @@ export function CustomerPicker({
           ))}
         </ul>
       )}
-      {editing && query !== '' && results.isSuccess && items.length === 0 && (
+      {editing && results.isSuccess && items.length === 0 && (
         <p className="absolute z-50 mt-1 w-full rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md">
-          No active customer matches.
+          {query === ''
+            ? 'No customers yet. Add one under Customers.'
+            : 'No active customer matches.'}
         </p>
       )}
     </div>
