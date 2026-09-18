@@ -337,6 +337,11 @@ export function listInvoices(db: Db, input: unknown): ListPage<InvoiceSummary> {
     clauses.push('i.status = ?')
     params.push(filters.status)
   }
+  // The account the invoice was made out to, whatever name was saved on it at the time.
+  if (filters.customerId !== null) {
+    clauses.push('i.customer_id = ?')
+    params.push(filters.customerId)
+  }
   if (filters.dateFrom !== null) {
     clauses.push('i.invoice_date >= ?')
     params.push(filters.dateFrom)

@@ -387,6 +387,8 @@ export const InvoiceListInputSchema = z
     /** Words matched against the invoice number, Invoice Code, the customer's code and the saved customer and shop names. */
     search: z.string().trim().max(100, 'Use at most 100 characters.'),
     status: z.enum(['all', 'POSTED', 'VOID']),
+    /** One customer's invoices; null leaves every customer in. */
+    customerId: IdSchema.nullable(),
     /** Inclusive invoice date range; null leaves that side open. */
     dateFrom: OptionalDateSchema,
     dateTo: OptionalDateSchema

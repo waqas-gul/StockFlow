@@ -340,6 +340,7 @@ describe('an invoice saved before the shop and salesman were kept (schema 3)', (
         pageSize: 10,
         search: '',
         status: 'all',
+        customerId: null,
         dateFrom: null,
         dateTo: null
       }).items

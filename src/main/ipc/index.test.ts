@@ -1170,6 +1170,7 @@ describe('invoices', () => {
         pageSize: 25,
         search: 'ali',
         status: 'all',
+        customerId: null,
         dateFrom: TODAY,
         dateTo: null
       })

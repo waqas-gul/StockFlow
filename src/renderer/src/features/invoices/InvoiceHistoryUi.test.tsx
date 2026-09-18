@@ -101,6 +101,7 @@ describe('Invoice History', () => {
         pageSize: INVOICES_PAGE_SIZE,
         search: '',
         status: 'all',
+        customerId: null,
         dateFrom: null,
         dateTo: null
       }),
@@ -111,6 +112,7 @@ describe('Invoice History', () => {
     for (const expected of [
       'Invoice History',
       'New Invoice',
+      'Customer',
       'From',
       'To',
       'Invoice No Date Customer Shop Total Received Outstanding Status Actions',

@@ -72,9 +72,11 @@ export function ProductPicker({
         maxLength={100}
         disabled={disabled}
         value={text ?? label}
-        onFocus={(event) => {
-          setText(label)
-          event.currentTarget.select()
+        // Opening starts empty, on the whole list, ready to be narrowed; leaving puts the chosen product back.
+        onFocus={() => setText('')}
+        // Clicking the box again right after picking fires no focus event, because it never lost focus: open here too.
+        onMouseDown={() => {
+          if (text === null) setText('')
         }}
         onBlur={() => setText(null)}
         onChange={(event) => {

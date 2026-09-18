@@ -200,6 +200,7 @@ function list(overrides: Partial<InvoiceListInput> = {}): ReturnType<typeof list
     pageSize: 25,
     search: '',
     status: 'all',
+    customerId: null,
     dateFrom: null,
     dateTo: null,
     ...overrides
@@ -386,6 +387,15 @@ describe('listInvoices', () => {
     ])
     expect(numbers({ status: 'POSTED', search: 'bilal', dateTo: '2026-09-13' })).toEqual([])
     expect(list({ status: 'POSTED' }).total).toBe(4)
+  })
+
+  it('filters by one customer account, and combines with the search and the other filters', () => {
+    seedHistory()
+    expect(numbers({ customerId: ali.id })).toEqual(['INV-000003', 'INV-000001'])
+    expect(numbers({ customerId: bilal.id })).toEqual(['INV-000005', 'INV-000002'])
+    expect(numbers({ customerId: ali.id, dateTo: '2026-09-05' })).toEqual(['INV-000001'])
+    expect(numbers({ customerId: ali.id, search: 'bilal' })).toEqual([])
+    expect(list({ customerId: bilal.id }).total).toBe(2)
   })
 
   it('refuses an invalid page, page size or date range', () => {

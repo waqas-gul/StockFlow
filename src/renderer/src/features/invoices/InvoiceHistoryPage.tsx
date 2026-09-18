@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Eye, FilePlus, Search } from 'lucide-react'
+import { Eye, FilePlus, Search, X } from 'lucide-react'
 import { Link } from 'react-router'
+import type { CustomerListItem } from '@shared/customers'
 import { formatDisplayDate } from '@shared/dates'
 import type { InvoiceListInput, InvoiceStatus, InvoiceSummary } from '@shared/invoices'
 import { Badge } from '@renderer/components/ui/badge'
@@ -26,17 +27,19 @@ import {
 } from '@renderer/components/ui/table'
 import { invoiceListQuery, settingsQuery } from '@renderer/lib/app-queries'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
-import { balanceClassName, balanceText } from '../customers/customer-display'
+import { balanceClassName, balanceText, customerLabel } from '../customers/customer-display'
+import { CustomerPicker } from '../customers/CustomerPicker'
 import { formatAmount, type CurrencyFormat } from '../products/product-display'
 import { Pager } from '../stock/Pager'
 import { INVOICE_STATUS_LABELS } from './invoice-history'
 
 export const INVOICES_PAGE_SIZE = 25
 
-/** Sales → Invoice History: saved invoices, newest first, with search, date and status filters. */
+/** Sales → Invoice History: saved invoices, newest first, with search, customer, date and status filters. */
 export function InvoiceHistoryPage(): React.JSX.Element {
   const settings = useQuery(settingsQuery)
   const [search, setSearch] = useState('')
+  const [customer, setCustomer] = useState<CustomerListItem | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [status, setStatus] = useState<InvoiceListInput['status']>('all')
@@ -52,6 +55,7 @@ export function InvoiceHistoryPage(): React.JSX.Element {
       pageSize: INVOICES_PAGE_SIZE,
       search: debouncedSearch,
       status,
+      customerId: customer?.id ?? null,
       dateFrom: dateFrom === '' ? null : dateFrom,
       dateTo: dateTo === '' ? null : dateTo
     }),
@@ -65,7 +69,12 @@ export function InvoiceHistoryPage(): React.JSX.Element {
       }
     : null
 
-  const filtered = debouncedSearch !== '' || dateFrom !== '' || dateTo !== '' || status !== 'all'
+  const filtered =
+    debouncedSearch !== '' ||
+    customer !== null ||
+    dateFrom !== '' ||
+    dateTo !== '' ||
+    status !== 'all'
   const changeFilter =
     <T,>(set: (value: T) => void) =>
     (value: T): void => {
@@ -107,6 +116,31 @@ export function InvoiceHistoryPage(): React.JSX.Element {
               value={search}
               onChange={(event) => changeFilter(setSearch)(event.target.value)}
             />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="invoices-customer" className="text-xs text-muted-foreground">
+              Customer
+            </Label>
+            <div className="flex w-64 items-center gap-1">
+              <div className="flex-1">
+                <CustomerPicker
+                  id="invoices-customer"
+                  ariaLabel="Customer"
+                  label={customer === null ? '' : customerLabel(customer)}
+                  onPick={changeFilter(setCustomer)}
+                />
+              </div>
+              {customer !== null && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear customer"
+                  onClick={() => changeFilter(setCustomer)(null)}
+                >
+                  <X aria-hidden />
+                </Button>
+              )}
+            </div>
           </div>
           <div className="grid gap-1">
             <Label htmlFor="invoices-from" className="text-xs text-muted-foreground">

@@ -74,7 +74,7 @@ export function dashboardData(db: Db, now: Date): DashboardData {
     dateFrom: null,
     dateTo: null
   }
-  const recentInvoices = listInvoices(db, { ...recent, status: 'all' }).items
+  const recentInvoices = listInvoices(db, { ...recent, status: 'all', customerId: null }).items
 
   return {
     today,
