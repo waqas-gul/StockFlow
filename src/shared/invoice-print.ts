@@ -5,9 +5,10 @@ import { PAPER_SIZES, type PaperSize } from './settings'
 import { IdSchema } from './validation'
 
 /*
- * Invoice printing and PDF (Phase 9B). The printed invoice is built from one read of the saved invoice: the customer,
- * product, unit, price and total snapshots written when it was posted, and the current dispatch details. Nothing is
- * taken from the current customer or product records, and printing writes nothing.
+ * Invoice printing and PDF (Phase 9B). The printed invoice is built from one read of the saved invoice: the shop,
+ * salesman, customer, product, unit, price and total snapshots written when it was posted, and the current dispatch
+ * details. Nothing is taken from the current customer or product records or from the shop and salesman in Settings
+ * (except the shop name of an invoice posted before it was kept), and printing writes nothing.
  *
  * The renderer shows the print preview; the main process prints that preview (the system print dialog) or saves it
  * as a PDF (its own Save dialog). No call takes a printer, a file name or a path.
@@ -66,8 +67,20 @@ export interface PrintableInvoice {
   readonly status: InvoiceStatus
   readonly voidDate: string | null
   readonly voidReason: string | null
-  /** Current settings: presentation only. */
+  /**
+   * The shop name saved with the invoice. An invoice posted before shop names were kept prints the current one, as it
+   * always did.
+   */
   readonly businessName: string
+  /** The shop address saved with the invoice; null when none was saved. */
+  readonly businessAddress: string | null
+  /** The salesman saved with the invoice; null for an invoice posted before the salesman was kept. */
+  readonly salesman: {
+    readonly name: string
+    readonly phone1: string | null
+    readonly phone2: string | null
+  } | null
+  /** Current settings: presentation only. */
   readonly currency: {
     readonly code: string
     readonly symbol: string

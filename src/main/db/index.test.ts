@@ -65,11 +65,12 @@ describe('production migrations', () => {
     expect(() => validateMigrations(migrations)).not.toThrow()
   })
 
-  it('are 0001_initial, 0002_stock_adjustment_receipt_item and 0003_supplier_accounts, in order', () => {
+  it('are 0001_initial, 0002_stock_adjustment_receipt_item, 0003_supplier_accounts and 0004_invoice_business_salesman_snapshot, in order', () => {
     expect(migrations.map((migration) => [migration.version, migration.name])).toEqual([
       [1, '0001_initial'],
       [2, '0002_stock_adjustment_receipt_item'],
-      [3, '0003_supplier_accounts']
+      [3, '0003_supplier_accounts'],
+      [4, '0004_invoice_business_salesman_snapshot']
     ])
   })
 })

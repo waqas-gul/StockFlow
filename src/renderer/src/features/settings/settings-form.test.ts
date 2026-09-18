@@ -11,6 +11,10 @@ import {
 
 const SETTINGS: EditableSettings = {
   'business.name': 'Ali Traders',
+  'business.address': 'Shop 12, Main Bazar, Mingora',
+  'salesman.name': 'Mansoor Iqbal',
+  'salesman.phone1': '03179927633',
+  'salesman.phone2': '03463820629',
   'currency.code': 'PKR',
   'currency.symbol': 'Rs',
   'currency.minorDigits': 2,
@@ -22,6 +26,10 @@ const SETTINGS: EditableSettings = {
 
 const VALUES: SettingsFormValues = {
   businessName: 'Ali Traders',
+  businessAddress: 'Shop 12, Main Bazar, Mingora',
+  salesmanName: 'Mansoor Iqbal',
+  salesmanPhone1: '03179927633',
+  salesmanPhone2: '03463820629',
   currencyCode: 'PKR',
   currencySymbol: 'Rs',
   minorDigits: 2,
@@ -47,12 +55,33 @@ describe('the Settings form', () => {
 
   it('accepts valid values, trimming text and writing the currency code in capitals', () => {
     expect(
-      settingsFormSchema.parse({ ...VALUES, businessName: '  Ali  ', currencyCode: ' usd ' })
-    ).toEqual({ ...VALUES, businessName: 'Ali', currencyCode: 'USD' })
+      settingsFormSchema.parse({
+        ...VALUES,
+        businessName: '  Ali  ',
+        businessAddress: '  Shop 1  ',
+        salesmanName: ' Imran ',
+        salesmanPhone2: '   ',
+        currencyCode: ' usd '
+      })
+    ).toEqual({
+      ...VALUES,
+      businessName: 'Ali',
+      businessAddress: 'Shop 1',
+      salesmanName: 'Imran',
+      salesmanPhone2: '',
+      currencyCode: 'USD'
+    })
   })
 
   it('uses the plain-language messages of the main process rules', () => {
-    expect(messages({ businessName: '  ' })).toEqual({ businessName: ['Enter the business name.'] })
+    expect(messages({ businessName: '  ' })).toEqual({ businessName: ['Enter the shop name.'] })
+    expect(messages({ businessAddress: 'Main Bazar\nMingora' })).toEqual({
+      businessAddress: ['Use a single line of text.']
+    })
+    expect(messages({ salesmanName: '' })).toEqual({ salesmanName: ['Enter the salesman name.'] })
+    expect(messages({ salesmanPhone1: '0'.repeat(41) })).toEqual({
+      salesmanPhone1: ['Use at most 40 characters.']
+    })
     expect(messages({ currencyCode: 'RUPEE' })).toEqual({
       currencyCode: ['Use a three-letter currency code, such as PKR.']
     })
@@ -72,22 +101,24 @@ describe('the Settings form', () => {
   it('sends only the fields that were changed, as settings', () => {
     expect(
       toSettingsPatch(
-        { ...VALUES, businessName: 'New name', paperSize: 'A5' },
-        { businessName: true, paperSize: true, currencyCode: false }
+        { ...VALUES, businessName: 'New name', salesmanPhone2: '', paperSize: 'A5' },
+        { businessName: true, salesmanPhone2: true, paperSize: true, currencyCode: false }
       )
-    ).toEqual({ 'business.name': 'New name', 'invoice.paperSize': 'A5' })
+    ).toEqual({ 'business.name': 'New name', 'salesman.phone2': '', 'invoice.paperSize': 'A5' })
     expect(toSettingsPatch(VALUES, {})).toEqual({})
   })
 
   it("shows the main process's field errors under the matching fields", () => {
     expect(
       formFieldErrors({
-        'business.name': ['Enter the business name.', 'second'],
+        'business.name': ['Enter the shop name.', 'second'],
+        'salesman.name': ['Enter the salesman name.'],
         'invoice.padding': ['Enter a whole number from 1 to 10.'],
         root: ['Unrecognized key']
       })
     ).toEqual({
-      businessName: 'Enter the business name.',
+      businessName: 'Enter the shop name.',
+      salesmanName: 'Enter the salesman name.',
       invoicePadding: 'Enter a whole number from 1 to 10.'
     })
     expect(formFieldErrors(undefined)).toEqual({})

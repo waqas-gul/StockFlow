@@ -38,7 +38,8 @@ describe('the printed invoice', () => {
     expect(html).toContain('data-print-document=""')
     expect(html).toContain('data-invoice-no="INV-000001"')
     expect(shown).toContain(
-      'Madina Traders INVOICE Invoice No INV-000001 Date 12-Sep-2026 Invoice Code IC-7'
+      'Madina Traders Shop 4, Circular Road, Lahore Salesman: Hamid Ali Phone: 0300-7654321 / 0345-1112223 ' +
+        'INVOICE Invoice No INV-000001 Date 12-Sep-2026 Invoice Code IC-7'
     )
     expect(shown).toContain(
       'Bill To Customer Ali Raza Shop Name Ali Traders Contact 0300-1234567 Address Main Bazar City Lahore'
@@ -46,6 +47,41 @@ describe('the printed invoice', () => {
     expect(shown).toContain(
       'Dispatch Bilty Number BL-1 Transport Service Daewoo Cargo Adda Name Badami Bagh'
     )
+  })
+
+  it('prints the shop, address and salesman saved with the invoice at the top, next to the invoice number', () => {
+    const { html } = printed(printableInvoice())
+    const seller = /<div class="ip-seller">([\s\S]*?)<\/div>/.exec(html)
+    expect(seller).not.toBeNull()
+    expect(seller![1]).toBe(
+      '<p class="ip-business">Madina Traders</p>' +
+        '<p class="ip-address">Shop 4, Circular Road, Lahore</p>' +
+        '<p class="ip-salesman">Salesman: <span class="ip-strong">Hamid Ali</span></p>' +
+        '<p class="ip-salesman">Phone: 0300-7654321 / 0345-1112223</p>'
+    )
+  })
+
+  it('prints only the salesman phones that were saved, and no phone line without one', () => {
+    const one = printed(
+      printableInvoice({ salesman: { name: 'Hamid Ali', phone1: null, phone2: '0345-1112223' } })
+    ).shown
+    expect(one).toContain('Salesman: Hamid Ali Phone: 0345-1112223 INVOICE')
+    const none = printed(
+      printableInvoice({
+        businessAddress: null,
+        salesman: { name: 'Hamid Ali', phone1: null, phone2: null }
+      })
+    ).shown
+    expect(none).toContain('Madina Traders Salesman: Hamid Ali INVOICE')
+    expect(none).not.toContain('Phone')
+  })
+
+  it('prints an invoice posted before the shop and salesman were kept as it always did: the shop name only', () => {
+    const { html, shown } = printed(printableInvoice({ businessAddress: null, salesman: null }))
+    expect(shown).toContain('Madina Traders INVOICE Invoice No INV-000001 Date 12-Sep-2026')
+    expect(shown).not.toContain('Salesman')
+    expect(shown).not.toContain('Phone')
+    expect(html).not.toContain('ip-address')
   })
 
   it('prints each line with its saved packing, quantities, prices, discount, Ctn, Sch and free goods', () => {
@@ -205,13 +241,60 @@ describe('the print preview', () => {
     )
     expect(html).toContain('data-paper-size="A5"')
     expect(html).toMatch(/<button[^>]*aria-pressed="true"[^>]*>A5<\/button>/)
-    expect(text(html)).toContain('Madina Traders INVOICE')
+    expect(text(html)).toContain(
+      'Madina Traders Shop 4, Circular Road, Lahore Salesman: Hamid Ali Phone: 0300-7654321 / 0345-1112223 INVOICE'
+    )
     expect(html).not.toContain('<aside')
     expect(html).not.toContain('<nav')
   })
 })
 
 describe('Invoice Detail', () => {
+  function detail(overrides: Parameters<typeof invoiceDetail>[0] = {}): string {
+    return text(
+      renderToStaticMarkup(
+        <MemoryRouter>
+          <InvoiceDetailView
+            invoice={invoiceDetail(overrides)}
+            currency={{ minorDigits: 2, symbol: 'Rs' }}
+            onEditDispatch={noop}
+            onVoid={noop}
+            onOpenPayment={noop}
+          />
+        </MemoryRouter>
+      )
+    )
+  }
+
+  it('shows the shop and salesman saved with the invoice', () => {
+    const shown = detail()
+    expect(shown).toContain('Sold by Iftikhar and Arshad Traders Shop 12, Main Bazar, Mingora')
+    expect(shown).toContain('Salesman Mansoor Iqbal 03179927633 / 03463820629')
+    expect(shown).not.toContain('Not saved')
+  })
+
+  it('leaves out an address or phone that was not saved', () => {
+    const shown = detail({
+      business: {
+        shopName: 'Iftikhar and Arshad Traders',
+        shopAddress: null,
+        salesmanName: 'Mansoor Iqbal',
+        salesmanPhone1: null,
+        salesmanPhone2: null
+      }
+    })
+    expect(shown).toContain('Sold by Iftikhar and Arshad Traders Salesman Mansoor Iqbal')
+  })
+
+  it('says an invoice posted before the shop and salesman were kept has none, and invents nothing', () => {
+    const shown = detail({ business: null })
+    expect(shown).toContain(
+      'Shop and salesman Not saved: this invoice was posted before StockFlow kept them.'
+    )
+    expect(shown).not.toContain('Sold by')
+    expect(shown).not.toContain('Mansoor')
+  })
+
   it.each(['POSTED', 'VOID'] as const)('a %s invoice offers Print Invoice', (status) => {
     const html = renderToStaticMarkup(
       <MemoryRouter>

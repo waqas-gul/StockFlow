@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import type { CustomerListItem } from '@shared/customers'
-import type { InvoiceContext } from '@shared/invoices'
+import type { InvoiceBusinessDetails, InvoiceContext } from '@shared/invoices'
 import type { Product, ProductUnit } from '@shared/products'
 import {
   emptyInvoiceDraft,
@@ -18,6 +18,14 @@ import { PostInvoiceConfirmation } from './PostInvoiceDialog'
 
 const RS = { minorDigits: 2, symbol: 'Rs' }
 const TODAY = '2026-09-16'
+
+const BUSINESS: InvoiceBusinessDetails = {
+  shopName: 'Iftikhar and Arshad Traders',
+  shopAddress: 'Shop 12, Main Bazar, Mingora',
+  salesmanName: 'Mansoor Iqbal',
+  salesmanPhone1: '03179927633',
+  salesmanPhone2: '03463820629'
+}
 
 const context: InvoiceContext = {
   today: TODAY,
@@ -133,6 +141,7 @@ function render(value: InvoiceDraft, overrides: Partial<InvoiceEditorProps> = {}
           summary={summary}
           currency={RS}
           context={context}
+          business={BUSINESS}
           customerBalanceMinor={balanceMinor}
           walkInAvailable
           errors={{}}
@@ -197,6 +206,33 @@ describe('New Invoice screen', () => {
     }
     expect(html).toMatch(/<input[^>]*type="date"[^>]*min="2026-09-12"[^>]*max="2026-09-16"/)
     expect(html).toContain('placeholder="Code, product or company"')
+  })
+
+  it('shows the shop and salesman from Settings that the invoice will keep, read-only', () => {
+    const html = render(draft())
+    const section = /<section[^>]*aria-label="Printed on the invoice"[^>]*>(.*?)<\/section>/s.exec(
+      html
+    )
+    expect(section).not.toBeNull()
+    expect(text(section![1])).toBe(
+      'Printed on the invoice Iftikhar and Arshad Traders Shop 12, Main Bazar, Mingora ' +
+        'Salesman: Mansoor Iqbal Phone: 03179927633 / 03463820629 ' +
+        'From Settings. Saved with the invoice when it is posted.'
+    )
+    expect(section![1]).not.toMatch(/<input|<textarea|<select|<button/)
+  })
+
+  it('leaves out an empty shop address and phone line', () => {
+    const html = render(draft(), {
+      business: { ...BUSINESS, shopAddress: null, salesmanPhone1: null, salesmanPhone2: null }
+    })
+    const section = /<section[^>]*aria-label="Printed on the invoice"[^>]*>(.*?)<\/section>/s.exec(
+      html
+    )
+    expect(text(section![1])).toBe(
+      'Printed on the invoice Iftikhar and Arshad Traders Salesman: Mansoor Iqbal ' +
+        'From Settings. Saved with the invoice when it is posted.'
+    )
   })
 
   it("shows the chosen customer's current balance as Due, Advance or Settled", () => {

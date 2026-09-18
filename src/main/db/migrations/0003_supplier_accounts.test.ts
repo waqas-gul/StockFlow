@@ -29,6 +29,7 @@ const TRIGGER = 'SQLITE_CONSTRAINT_TRIGGER'
 const CHECK = 'SQLITE_CONSTRAINT_CHECK'
 const UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE'
 const SCHEMA_TWO = [initialMigration, stockAdjustmentReceiptItemMigration]
+const SCHEMA_THREE = [...SCHEMA_TWO, supplierAccountsMigration]
 
 let temp: TempDir
 
@@ -107,11 +108,7 @@ describe('0003_supplier_accounts: definition', () => {
   it('is schema version 3, registered after 0002', () => {
     expect(supplierAccountsMigration.version).toBe(3)
     expect(supplierAccountsMigration.name).toBe('0003_supplier_accounts')
-    expect(migrations).toEqual([
-      initialMigration,
-      stockAdjustmentReceiptItemMigration,
-      supplierAccountsMigration
-    ])
+    expect(migrations.slice(0, 3)).toEqual(SCHEMA_THREE)
   })
 
   it('pins the SHA-256 checksum of its SQL script, with LF line endings and no floating-point types', () => {
@@ -152,7 +149,7 @@ describe('0003_supplier_accounts: upgrading a schema 2 database', () => {
     const tablesBefore = snapshot(before)
     before.close()
 
-    const ctx = testContext(temp, { now: () => TEST_TIME })
+    const ctx = testContext(temp, { now: () => TEST_TIME, migrations: SCHEMA_THREE })
     const db = temp.track(await initializeDatabase(ctx))
 
     expect(readUserVersion(db)).toBe(3)
@@ -296,10 +293,10 @@ describe('0003_supplier_accounts: upgrading a schema 2 database', () => {
 
   it('is idempotent: a second launch migrates nothing and makes no second backup', async () => {
     await schemaTwoDatabase()
-    const first = await initializeDatabase(testContext(temp))
+    const first = await initializeDatabase(testContext(temp, { migrations: SCHEMA_THREE }))
     const rowsAfterFirst = snapshot(first)
     first.close()
-    const ctx = testContext(temp)
+    const ctx = testContext(temp, { migrations: SCHEMA_THREE })
     const db = temp.track(await initializeDatabase(ctx))
     expect(readUserVersion(db)).toBe(3)
     expect(snapshot(db)).toEqual(rowsAfterFirst)
@@ -310,7 +307,7 @@ describe('0003_supplier_accounts: upgrading a schema 2 database', () => {
 
   it('migrates a new database from schema 0 straight to 3 without a backup', async () => {
     const ctx = testContext(temp)
-    const db = await createSchemaDatabase(temp)
+    const db = await createSchemaDatabase(temp, SCHEMA_THREE)
     expect(readUserVersion(db)).toBe(3)
     const folder = backupFolder(ctx.paths, 'pre-migration')
     expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([])

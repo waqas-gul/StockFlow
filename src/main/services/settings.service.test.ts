@@ -6,6 +6,7 @@ import {
   createTempDir,
   insertMasters,
   insertRow,
+  invoiceRow,
   isBetween,
   rows,
   thrown,
@@ -56,7 +57,11 @@ function validationFailure(fn: () => unknown): AppFailure {
 describe('readSettings', () => {
   it('reads every seeded value with its type', () => {
     expect(readSettings(db)).toEqual({
-      'business.name': 'StockFlow',
+      'business.name': 'Iftikhar and Arshad Traders',
+      'business.address': '',
+      'salesman.name': 'Mansoor Iqbal',
+      'salesman.phone1': '03179927633',
+      'salesman.phone2': '03463820629',
       'currency.code': 'PKR',
       'currency.symbol': 'Rs',
       'currency.minorDigits': 2,
@@ -154,6 +159,10 @@ describe('updateSettings', () => {
   it('accepts values at the edges of every rule', () => {
     const low = {
       'business.name': 'A',
+      'business.address': '',
+      'salesman.name': 'M',
+      'salesman.phone1': '',
+      'salesman.phone2': '',
       'currency.code': 'USD',
       'currency.symbol': '$',
       'currency.minorDigits': 0,
@@ -168,6 +177,10 @@ describe('updateSettings', () => {
     expect(updateSettings(db, low)).toEqual(low)
     const high = {
       'business.name': 'B'.repeat(100),
+      'business.address': 'Shop 12, Main Bazar, Mingora '.padEnd(200, 'x'),
+      'salesman.name': 'S'.repeat(60),
+      'salesman.phone1': '+92 317 9927633 / ext 12'.padEnd(40, '0'),
+      'salesman.phone2': '0'.repeat(40),
       'currency.symbol': 'Rs.',
       'currency.minorDigits': 4,
       'invoice.prefix': 'SF-2026.A_b1',
@@ -182,6 +195,14 @@ describe('updateSettings', () => {
   it.each<[string, Record<string, unknown>]>([
     ['a blank business name', { 'business.name': '   ' }],
     ['a business name over 100 characters', { 'business.name': 'x'.repeat(101) }],
+    ['a shop address over 200 characters', { 'business.address': 'x'.repeat(201) }],
+    ['a shop address on two lines', { 'business.address': 'Main Bazar\nMingora' }],
+    ['a blank salesman name', { 'salesman.name': '  ' }],
+    ['a salesman name over 60 characters', { 'salesman.name': 'x'.repeat(61) }],
+    ['a salesman name with a tab', { 'salesman.name': 'Mansoor\tIqbal' }],
+    ['a salesman phone over 40 characters', { 'salesman.phone1': '0'.repeat(41) }],
+    ['a second salesman phone on two lines', { 'salesman.phone2': '0346\n3820629' }],
+    ['a salesman name given as a number', { 'salesman.name': 42 }],
     ['a currency code that is not upper case', { 'currency.code': 'pkr' }],
     ['a currency code of four letters', { 'currency.code': 'PKRS' }],
     ['an empty currency symbol', { 'currency.symbol': ' ' }],
@@ -240,7 +261,7 @@ describe('updateSettings', () => {
     expect(() => updateSettings(db, { 'business.name': 'Changed', 'invoice.padding': 5 })).toThrow(
       /simulated write failure/
     )
-    expect(stored('business.name')).toBe('"StockFlow"')
+    expect(stored('business.name')).toBe('"Iftikhar and Arshad Traders"')
     expect(stored('invoice.padding')).toBe('6')
     expect(db.inTransaction).toBe(false)
   })
@@ -267,7 +288,11 @@ describe('SettingsPatchSchema', () => {
 
 describe('the Settings screen: readEditableSettings and updateEditableSettings', () => {
   const EDITABLE = {
-    'business.name': 'StockFlow',
+    'business.name': 'Iftikhar and Arshad Traders',
+    'business.address': '',
+    'salesman.name': 'Mansoor Iqbal',
+    'salesman.phone1': '03179927633',
+    'salesman.phone2': '03463820629',
     'currency.code': 'PKR',
     'currency.symbol': 'Rs',
     'currency.minorDigits': 2,
@@ -277,7 +302,7 @@ describe('the Settings screen: readEditableSettings and updateEditableSettings',
     'invoice.paperSize': 'A4'
   }
 
-  it('reads the business, currency and invoice settings, and no backup setting', () => {
+  it('reads the shop, salesman, currency and invoice settings, and no backup setting', () => {
     expect(readEditableSettings(db)).toEqual(EDITABLE)
   })
 
@@ -287,6 +312,25 @@ describe('the Settings screen: readEditableSettings and updateEditableSettings',
     ).toEqual({ ...EDITABLE, 'business.name': 'Ali Traders', 'currency.minorDigits': 0 })
     expect(stored('business.name')).toBe('"Ali Traders"')
     expect(stored('currency.minorDigits')).toBe('0')
+  })
+
+  it('saves the shop address and the salesman trimmed; the address and phones may be left empty', () => {
+    expect(
+      updateEditableSettings(db, {
+        'business.address': '  Shop 12, Main Bazar, Mingora  ',
+        'salesman.name': ' Imran Khan ',
+        'salesman.phone1': ' 0300-1112223 ',
+        'salesman.phone2': '   '
+      })
+    ).toEqual({
+      ...EDITABLE,
+      'business.address': 'Shop 12, Main Bazar, Mingora',
+      'salesman.name': 'Imran Khan',
+      'salesman.phone1': '0300-1112223',
+      'salesman.phone2': ''
+    })
+    expect(stored('salesman.phone2')).toBe('""')
+    expect(updateEditableSettings(db, { 'business.address': '' })['business.address']).toBe('')
   })
 
   it.each<[string, Record<string, unknown>]>([
@@ -304,7 +348,11 @@ describe('the Settings screen: readEditableSettings and updateEditableSettings',
   })
 
   it.each<[string, unknown, string]>([
-    ['business.name', '  ', 'Enter the business name.'],
+    ['business.name', '  ', 'Enter the shop name.'],
+    ['business.address', 'x'.repeat(201), 'Use at most 200 characters.'],
+    ['salesman.name', '', 'Enter the salesman name.'],
+    ['salesman.phone1', '0'.repeat(41), 'Use at most 40 characters.'],
+    ['salesman.phone2', '0346\r3820629', 'Use a single line of text.'],
     ['currency.code', 'pkr', 'Use a three-letter currency code, such as PKR.'],
     ['currency.symbol', '', 'Enter the currency symbol.'],
     ['currency.minorDigits', 5, 'Enter a whole number from 0 to 4.'],
@@ -331,7 +379,7 @@ describe('the Settings screen: readEditableSettings and updateEditableSettings',
       currencyLocked: true,
       startNumberLocked: false
     })
-    insertRow(db, 'invoices', rows.invoice(m))
+    insertRow(db, 'invoices', invoiceRow(db, m))
     expect(readSettingsView(db)).toEqual({
       values: EDITABLE,
       currencyLocked: true,
@@ -415,7 +463,7 @@ describe('the currency code, symbol and decimal places are locked once financial
       'a stock movement',
       (m) => insertOrphan('stock_movements', rows.movement(m, { receipt_item_id: 99 }))
     ],
-    ['an invoice', (m) => insertRow(db, 'invoices', rows.invoice(m))],
+    ['an invoice', (m) => insertRow(db, 'invoices', invoiceRow(db, m))],
     ['an invoice line', (m) => insertOrphan('invoice_items', rows.invoiceItem(m, 99))],
     [
       'an invoice line quantity',
@@ -501,7 +549,7 @@ describe('invoice.startNumber is locked once invoice numbering has begun', () =>
   })
 
   it.each<[string, () => void]>([
-    ['an invoice exists', () => insertRow(db, 'invoices', rows.invoice(insertMasters(db)))],
+    ['an invoice exists', () => insertRow(db, 'invoices', invoiceRow(db, insertMasters(db)))],
     [
       'the invoice number sequence has moved on',
       () => db.run("UPDATE sequences SET next_value = 4 WHERE name = 'invoice'")

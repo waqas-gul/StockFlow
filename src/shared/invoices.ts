@@ -9,6 +9,7 @@ import {
   type PaymentStatus
 } from './payments'
 import { MAX_UNITS_PER_PRODUCT } from './products'
+import type { Settings } from './settings'
 import { MAX_STOCK_QUANTITY } from './stock'
 import {
   DateSchema,
@@ -21,7 +22,7 @@ import {
 
 /*
  * Sales invoices (plan §11). Posting an invoice is one transaction in the main process: the header with a copy of the
- * customer's details, one line per product with a copy of the product's details, the quantity rows of each line with a
+ * customer's details and of the shop and salesman in Settings, one line per product with a copy of the product's details, the quantity rows of each line with a
  * copy of each unit, one SALE stock movement per line at its frozen weighted-average cost, the INVOICE ledger entry,
  * and, when money is received at the counter, a real payment with its PAYMENT ledger entry.
  *
@@ -225,6 +226,42 @@ export interface InvoiceContext {
   } | null
 }
 
+/**
+ * The shop and salesman printed on an invoice. New Invoice shows them from Settings; posting copies them onto the
+ * invoice in the same transaction, so a later change in Settings never alters an invoice already posted. An empty
+ * address or phone is null.
+ */
+export interface InvoiceBusinessDetails {
+  readonly shopName: string
+  readonly shopAddress: string | null
+  readonly salesmanName: string
+  readonly salesmanPhone1: string | null
+  readonly salesmanPhone2: string | null
+}
+
+/** The shop and salesman in Settings, as a new invoice saves them. */
+export function invoiceBusinessDetails(
+  settings: Pick<
+    Settings,
+    'business.name' | 'business.address' | 'salesman.name' | 'salesman.phone1' | 'salesman.phone2'
+  >
+): InvoiceBusinessDetails {
+  const optional = (value: string): string | null => (value.trim() === '' ? null : value)
+  return {
+    shopName: settings['business.name'],
+    shopAddress: optional(settings['business.address']),
+    salesmanName: settings['salesman.name'],
+    salesmanPhone1: optional(settings['salesman.phone1']),
+    salesmanPhone2: optional(settings['salesman.phone2'])
+  }
+}
+
+/** "03179927633 / 03463820629": the salesman's phones that are set, or null when neither is. */
+export function salesmanPhoneText(phone1: string | null, phone2: string | null): string | null {
+  const phones = [phone1, phone2].filter((phone): phone is string => phone !== null && phone !== '')
+  return phones.length === 0 ? null : phones.join(' / ')
+}
+
 /** 'INV-', padding 6 and 12 → 'INV-000012'. A number longer than the padding is written in full. */
 export function formatInvoiceNumber(prefix: string, padding: number, value: number): string {
   return `${prefix}${String(value).padStart(padding, '0')}`
@@ -292,6 +329,11 @@ export interface InvoiceDetail {
   readonly customerPhone: string | null
   readonly customerAddress: string | null
   readonly customerCity: string | null
+  /**
+   * The shop and salesman saved with the invoice when it was posted. Null for an invoice posted before StockFlow kept
+   * them (schema 4): nothing is invented for it.
+   */
+  readonly business: InvoiceBusinessDetails | null
   readonly priceTier: PriceTier
   readonly grossMinor: number
   readonly lineDiscountMinor: number

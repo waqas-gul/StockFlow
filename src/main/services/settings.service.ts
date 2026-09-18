@@ -18,9 +18,9 @@ import type { Logger } from '../logging'
 /*
  * The typed settings backend over the `settings` table, where each value is stored as JSON. Only the keys defined in
  * @shared/settings can be read or written through it: there is no generic key/value access. There is no
- * negative-stock setting (plan §8.3). The Settings screen reads and edits the business, currency and invoice settings
- * through `window.api.settings` (readSettingsView, updateSettingsView); the backup keys are not exposed: automatic
- * backups keep the fixed V1 policy. The currency code, symbol and decimal places are locked once financial data exists
+ * negative-stock setting (plan §8.3). The Settings screen reads and edits the shop, salesman, currency and invoice
+ * settings through `window.api.settings` (readSettingsView, updateSettingsView); the backup keys are not exposed:
+ * automatic backups keep the fixed V1 policy. The currency code, symbol and decimal places are locked once financial data exists
  * (hasMonetaryData), and invoice.startNumber once invoice numbering has begun (invoiceNumberingStarted). The business
  * effect of a change, such as applying invoice.startNumber to the invoice sequence, belongs to the phase that uses the
  * setting.
@@ -32,9 +32,16 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze(
   Object.keys(SETTING_SCHEMAS) as SettingKey[]
 )
 
-/** The values seeded by 0001_initial, used for a stored value that is missing or invalid. */
+/**
+ * The values the migrations seed (0001_initial, and 0004 for the shop name, address and salesman), used for a stored
+ * value that is missing or invalid.
+ */
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
-  'business.name': 'StockFlow',
+  'business.name': 'Iftikhar and Arshad Traders',
+  'business.address': '',
+  'salesman.name': 'Mansoor Iqbal',
+  'salesman.phone1': '03179927633',
+  'salesman.phone2': '03463820629',
   'currency.code': 'PKR',
   'currency.symbol': 'Rs',
   'currency.minorDigits': 2,
@@ -170,7 +177,7 @@ export function updateSettings(db: Db, patch: unknown): Settings {
   return readSettings(db)
 }
 
-/** The settings the Settings screen shows: business, currency and invoice (EDITABLE_SETTING_KEYS). */
+/** The settings the Settings screen shows: shop, salesman, currency and invoice (EDITABLE_SETTING_KEYS). */
 export function readEditableSettings(db: Db, log?: Pick<Logger, 'warn'>): EditableSettings {
   return editableOf(readSettings(db, log))
 }

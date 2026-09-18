@@ -4,7 +4,7 @@ import type { PrintableInvoice } from '@shared/invoice-print'
 
 /**
  * INV-000001 of C-00002 Ali Raza: 2 Box + 5 Piece of tea with 3 free pieces and a 5% discount, Rs 1,000.00 received
- * with RCP-000001 (posted).
+ * with RCP-000001 (posted), sold by Iftikhar and Arshad Traders with salesman Mansoor Iqbal.
  */
 export function invoiceDetail(overrides: Partial<InvoiceDetail> = {}): InvoiceDetail {
   return {
@@ -20,6 +20,13 @@ export function invoiceDetail(overrides: Partial<InvoiceDetail> = {}): InvoiceDe
     customerPhone: '0300-1234567',
     customerAddress: 'Main Bazar',
     customerCity: 'Lahore',
+    business: {
+      shopName: 'Iftikhar and Arshad Traders',
+      shopAddress: 'Shop 12, Main Bazar, Mingora',
+      salesmanName: 'Mansoor Iqbal',
+      salesmanPhone1: '03179927633',
+      salesmanPhone2: '03463820629'
+    },
     priceTier: 'RETAIL',
     grossMinor: 535_000,
     lineDiscountMinor: 26_750,
@@ -101,9 +108,9 @@ export function invoiceDetail(overrides: Partial<InvoiceDetail> = {}): InvoiceDe
 }
 
 /**
- * The printed INV-000001 of Madina Traders for Ali Raza: 2 Box + 5 Pc of tea (5% discount, Rs 100 scheme, 3 Pc free,
- * 2 Ctn) and 10 Kg of sugar (Rs 50 off), Rs 32.50 extra discount, Rs 200 freight, Rs 1,000 owed before and Rs 2,000
- * received.
+ * The printed INV-000001 of Madina Traders (salesman Hamid Ali) for Ali Raza: 2 Box + 5 Pc of tea (5% discount, Rs 100
+ * scheme, 3 Pc free, 2 Ctn) and 10 Kg of sugar (Rs 50 off), Rs 32.50 extra discount, Rs 200 freight, Rs 1,000 owed
+ * before and Rs 2,000 received.
  */
 export function printableInvoice(overrides: Partial<PrintableInvoice> = {}): PrintableInvoice {
   return {
@@ -115,6 +122,8 @@ export function printableInvoice(overrides: Partial<PrintableInvoice> = {}): Pri
     voidDate: null,
     voidReason: null,
     businessName: 'Madina Traders',
+    businessAddress: 'Shop 4, Circular Road, Lahore',
+    salesman: { name: 'Hamid Ali', phone1: '0300-7654321', phone2: '0345-1112223' },
     currency: { code: 'PKR', symbol: 'Rs', minorDigits: 2 },
     paperSize: 'A4',
     customer: {

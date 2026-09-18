@@ -20,6 +20,10 @@ const TODAY = '2026-09-16'
 const settings: SettingsView = {
   values: {
     'business.name': 'StockFlow',
+    'business.address': '',
+    'salesman.name': 'Mansoor Iqbal',
+    'salesman.phone1': '03179927633',
+    'salesman.phone2': '03463820629',
     'currency.code': 'PKR',
     'currency.symbol': 'Rs',
     'currency.minorDigits': 2,

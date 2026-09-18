@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   InvoiceCreateSchema,
   formatInvoiceNumber,
+  invoiceBusinessDetails,
+  salesmanPhoneText,
   type InvoiceCreateInput,
   type InvoiceLineInput
 } from './invoices'
@@ -186,5 +188,50 @@ describe('formatInvoiceNumber', () => {
     expect(formatInvoiceNumber('INV-', 6, 1)).toBe('INV-000001')
     expect(formatInvoiceNumber('SF.', 3, 12)).toBe('SF.012')
     expect(formatInvoiceNumber('', 4, 123_456)).toBe('123456')
+  })
+})
+
+describe('invoiceBusinessDetails', () => {
+  const settings = {
+    'business.name': 'Iftikhar and Arshad Traders',
+    'business.address': 'Shop 12, Main Bazar',
+    'salesman.name': 'Mansoor Iqbal',
+    'salesman.phone1': '03179927633',
+    'salesman.phone2': '03463820629'
+  }
+
+  it('takes the shop and salesman from Settings', () => {
+    expect(invoiceBusinessDetails(settings)).toEqual({
+      shopName: 'Iftikhar and Arshad Traders',
+      shopAddress: 'Shop 12, Main Bazar',
+      salesmanName: 'Mansoor Iqbal',
+      salesmanPhone1: '03179927633',
+      salesmanPhone2: '03463820629'
+    })
+  })
+
+  it('turns an empty address or phone into null', () => {
+    expect(
+      invoiceBusinessDetails({
+        ...settings,
+        'business.address': '',
+        'salesman.phone1': ' ',
+        'salesman.phone2': ''
+      })
+    ).toMatchObject({ shopAddress: null, salesmanPhone1: null, salesmanPhone2: null })
+  })
+})
+
+describe('salesmanPhoneText', () => {
+  it('writes the phones that are set, separated by a slash', () => {
+    expect(salesmanPhoneText('03179927633', '03463820629')).toBe('03179927633 / 03463820629')
+    expect(salesmanPhoneText('03179927633', null)).toBe('03179927633')
+    expect(salesmanPhoneText(null, '03463820629')).toBe('03463820629')
+    expect(salesmanPhoneText('', '03463820629')).toBe('03463820629')
+  })
+
+  it('is null without a phone', () => {
+    expect(salesmanPhoneText(null, null)).toBeNull()
+    expect(salesmanPhoneText('', '')).toBeNull()
   })
 })

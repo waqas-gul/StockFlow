@@ -4,7 +4,11 @@ import { LoaderCircle } from 'lucide-react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
 import {
+  BUSINESS_ADDRESS_MAX,
+  BUSINESS_NAME_MAX,
   CURRENCY_LOCKED_MESSAGE,
+  SALESMAN_NAME_MAX,
+  SALESMAN_PHONE_MAX,
   START_NUMBER_LOCKED_MESSAGE,
   type EditableSettings,
   type EditableSettingsPatch,
@@ -132,23 +136,74 @@ export function SettingsForm({
       <Card>
         <CardHeader>
           <CardTitle>Business</CardTitle>
-          <CardDescription>Your shop as it appears on invoices and reports.</CardDescription>
+          <CardDescription>
+            Your shop and salesman as printed on invoices. Each invoice keeps the shop and salesman
+            it was posted with: a change here applies to new invoices only.
+          </CardDescription>
         </CardHeader>
         <Separator />
-        <CardContent>
+        <CardContent className="grid gap-4 sm:grid-cols-3">
           <Field
             id="businessName"
-            label="Business name"
-            hint="Printed on invoices and reports."
+            label="Shop name"
+            hint="Printed at the top of invoices and shown on the Dashboard."
             error={errors.businessName?.message}
+            className="sm:col-span-3"
           >
             <Input
               id="businessName"
               aria-invalid={errors.businessName ? true : undefined}
-              maxLength={100}
+              maxLength={BUSINESS_NAME_MAX}
               {...register('businessName')}
             />
           </Field>
+          <Field
+            id="businessAddress"
+            label="Shop address"
+            hint="Printed under the shop name. It may be empty."
+            error={errors.businessAddress?.message}
+            className="sm:col-span-3"
+          >
+            <Input
+              id="businessAddress"
+              aria-invalid={errors.businessAddress ? true : undefined}
+              maxLength={BUSINESS_ADDRESS_MAX}
+              autoComplete="off"
+              {...register('businessAddress')}
+            />
+          </Field>
+          <Field
+            id="salesmanName"
+            label="Salesman name"
+            hint="Printed on invoices."
+            error={errors.salesmanName?.message}
+          >
+            <Input
+              id="salesmanName"
+              aria-invalid={errors.salesmanName ? true : undefined}
+              maxLength={SALESMAN_NAME_MAX}
+              autoComplete="off"
+              {...register('salesmanName')}
+            />
+          </Field>
+          {(['salesmanPhone1', 'salesmanPhone2'] as const).map((field, index) => (
+            <Field
+              key={field}
+              id={field}
+              label={`Phone ${index + 1}`}
+              hint="The salesman's number. It may be empty."
+              error={errors[field]?.message}
+            >
+              <Input
+                id={field}
+                inputMode="tel"
+                aria-invalid={errors[field] ? true : undefined}
+                maxLength={SALESMAN_PHONE_MAX}
+                autoComplete="off"
+                {...register(field)}
+              />
+            </Field>
+          ))}
         </CardContent>
       </Card>
 
@@ -332,16 +387,18 @@ function Field({
   label,
   hint,
   error,
+  className,
   children
 }: {
   id: string
   label: string
   hint: string
   error: string | undefined
+  className?: string
   children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <div className="grid content-start gap-1.5">
+    <div className={cn('grid content-start gap-1.5', className)}>
       <Label htmlFor={id}>{label}</Label>
       {children}
       {error ? (

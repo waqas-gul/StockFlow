@@ -91,7 +91,8 @@
   letter-spacing: 2pt;
 }
 
-/* Header: business name, then the document title with its number, date and code. */
+/* Header: the shop (name, address) and the salesman saved with the invoice, then the document title with its number,
+   date and code. */
 .ip-head {
   display: flex;
   align-items: flex-start;
@@ -101,12 +102,31 @@
   border-bottom: 1.5pt solid;
 }
 
+.ip-seller {
+  min-width: 0;
+}
+
 .ip-business {
   margin: 0;
   font-size: 18pt;
   font-weight: 700;
   line-height: 1.15;
   overflow-wrap: anywhere;
+}
+
+.ip-address,
+.ip-salesman {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ip-address {
+  margin-top: 0.8mm;
+}
+
+.ip-business + .ip-salesman,
+.ip-address + .ip-salesman {
+  margin-top: 1.2mm;
 }
 
 .ip-doc {

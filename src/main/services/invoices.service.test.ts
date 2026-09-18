@@ -365,6 +365,13 @@ describe('createInvoice: one transaction for the whole sale', () => {
       customerPhone: '0300-1234567',
       customerAddress: 'Main Bazar',
       customerCity: 'Lahore',
+      business: {
+        shopName: 'Iftikhar and Arshad Traders',
+        shopAddress: null,
+        salesmanName: 'Mansoor Iqbal',
+        salesmanPhone1: '03179927633',
+        salesmanPhone2: '03463820629'
+      },
       priceTier: 'RETAIL',
       grossMinor: 33_000,
       lineDiscountMinor: 0,

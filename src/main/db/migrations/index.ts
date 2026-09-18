@@ -2,6 +2,7 @@ import type { Migration } from '../migrate'
 import { initialMigration } from './0001_initial'
 import { stockAdjustmentReceiptItemMigration } from './0002_stock_adjustment_receipt_item'
 import { supplierAccountsMigration } from './0003_supplier_accounts'
+import { invoiceBusinessSalesmanSnapshotMigration } from './0004_invoice_business_salesman_snapshot'
 
 /**
  * The production schema migrations, in order. They are forward-only: once a migration has shipped it is never
@@ -15,5 +16,6 @@ import { supplierAccountsMigration } from './0003_supplier_accounts'
 export const migrations: readonly Migration[] = Object.freeze([
   initialMigration,
   stockAdjustmentReceiptItemMigration,
-  supplierAccountsMigration
+  supplierAccountsMigration,
+  invoiceBusinessSalesmanSnapshotMigration
 ])

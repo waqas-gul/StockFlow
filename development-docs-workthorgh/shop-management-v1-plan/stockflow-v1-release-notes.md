@@ -15,6 +15,13 @@ Check these in Settings first, because they lock:
 - **Currency code, symbol and decimal places** lock once any price, stock, invoice, payment, expense, customer balance or supplier balance has been entered. Old invoices always reprint in the same currency.
 - **Invoice starting number** locks once the first invoice has been created. Later invoices simply continue the numbering.
 
+## Your shop and salesman on invoices
+
+- **Settings → Business** holds the shop name and address and the salesman's name and two phone numbers. New invoices print them at the top.
+- The shop address is empty until you type it in Settings.
+- Each invoice keeps the details it was posted with. Changing them in Settings changes new invoices only.
+- Invoices made before this update have no salesman saved. They print as before, with the shop name only.
+
 ## Suppliers and what you owe them
 
 - **Suppliers** (sidebar) are the people and firms you buy stock from. They are not the product's **Brand / Company**.

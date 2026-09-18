@@ -25,7 +25,11 @@ const trusted = { senderFrame: { url: APP_URL } } as unknown as IpcMainInvokeEve
 const untrusted = { senderFrame: { url: 'https://evil.example/' } } as unknown as IpcMainInvokeEvent
 
 const EDITABLE_DEFAULTS = {
-  'business.name': 'StockFlow',
+  'business.name': 'Iftikhar and Arshad Traders',
+  'business.address': '',
+  'salesman.name': 'Mansoor Iqbal',
+  'salesman.phone1': '03179927633',
+  'salesman.phone2': '03463820629',
   'currency.code': 'PKR',
   'currency.symbol': 'Rs',
   'currency.minorDigits': 2,
@@ -138,7 +142,7 @@ describe('registerIpc', () => {
 })
 
 describe('settings', () => {
-  it('settings:get returns the business, currency and invoice settings only, and their locks', async () => {
+  it('settings:get returns the shop, salesman, currency and invoice settings only, and their locks', async () => {
     await expect(call('settings:get')).resolves.toEqual({
       ok: true,
       data: { values: EDITABLE_DEFAULTS, currencyLocked: false, startNumberLocked: false }
@@ -148,12 +152,22 @@ describe('settings', () => {
   it('settings:update validates again in the main process, saves, and returns the settings', async () => {
     const result = await call('settings:update', {
       'business.name': '  Ali Traders  ',
+      'business.address': ' Shop 12, Main Bazar ',
+      'salesman.name': ' Imran Khan ',
+      'salesman.phone2': '',
       'invoice.paperSize': 'A5'
     })
     expect(result).toEqual({
       ok: true,
       data: {
-        values: { ...EDITABLE_DEFAULTS, 'business.name': 'Ali Traders', 'invoice.paperSize': 'A5' },
+        values: {
+          ...EDITABLE_DEFAULTS,
+          'business.name': 'Ali Traders',
+          'business.address': 'Shop 12, Main Bazar',
+          'salesman.name': 'Imran Khan',
+          'salesman.phone2': '',
+          'invoice.paperSize': 'A5'
+        },
         currencyLocked: false,
         startNumberLocked: false
       }
@@ -201,6 +215,8 @@ describe('settings', () => {
 
   it.each<[string, unknown, string]>([
     ['an invalid value', { 'business.name': '   ' }, 'business.name'],
+    ['a blank salesman name', { 'salesman.name': ' ' }, 'salesman.name'],
+    ['an address on two lines', { 'business.address': 'Main Bazar\nMingora' }, 'business.address'],
     ['a wrong type', { 'currency.minorDigits': '2' }, 'currency.minorDigits'],
     ['an automatic backup setting', { 'backup.autoEnabled': false }, 'root'],
     ['a retention setting', { 'backup.keepDaily': 1 }, 'root'],
@@ -1297,7 +1313,9 @@ describe('invoices', () => {
       ok: true,
       data: {
         invoiceNo: 'INV-000001',
-        businessName: 'StockFlow',
+        businessName: 'Iftikhar and Arshad Traders',
+        businessAddress: null,
+        salesman: { name: 'Mansoor Iqbal', phone1: '03179927633', phone2: '03463820629' },
         paperSize: 'A4',
         customer: { name: 'Ali Raza' },
         totals: { totalMinor: 295_000, receivedMinor: 100_000, netOutstandingMinor: 195_000 },

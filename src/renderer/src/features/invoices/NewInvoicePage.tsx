@@ -4,7 +4,11 @@ import { useBlocker } from 'react-router'
 import { toast } from 'sonner'
 import { WALK_IN_CUSTOMER_CODE, isWalkInCustomer } from '@shared/customers'
 import { localDateString } from '@shared/dates'
-import type { InvoiceCreateInput } from '@shared/invoices'
+import {
+  invoiceBusinessDetails,
+  type InvoiceBusinessDetails,
+  type InvoiceCreateInput
+} from '@shared/invoices'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -67,14 +71,22 @@ export function NewInvoicePage(): React.JSX.Element {
     minorDigits: settings.data.values['currency.minorDigits'],
     symbol: settings.data.values['currency.symbol']
   }
-  return <InvoiceWorkspace currency={currency} />
+  return (
+    <InvoiceWorkspace currency={currency} business={invoiceBusinessDetails(settings.data.values)} />
+  )
 }
 
 /**
  * The invoice being entered, kept in local state only. It is posted with one request id, which changes only once the
  * invoice is saved (or the draft is discarded), so a retry never saves it twice.
  */
-function InvoiceWorkspace({ currency }: { currency: CurrencyFormat }): React.JSX.Element {
+function InvoiceWorkspace({
+  currency,
+  business
+}: {
+  currency: CurrencyFormat
+  business: InvoiceBusinessDetails
+}): React.JSX.Element {
   const queryClient = useQueryClient()
   const newDraft = useCallback(
     () =>
@@ -230,6 +242,7 @@ function InvoiceWorkspace({ currency }: { currency: CurrencyFormat }): React.JSX
         summary={summary}
         currency={currency}
         context={context.data}
+        business={business}
         customerBalanceMinor={balanceMinor}
         walkInAvailable={walkIn?.isActive === true}
         errors={errors}

@@ -30,12 +30,15 @@ import { readSettings } from './settings.service'
  */
 
 /**
- * The printed invoice, from the saved invoice (one synchronous read, so it cannot mix two states) and the current
- * business, currency and paper settings, which only change its presentation.
+ * The printed invoice, from the saved invoice (one synchronous read, so it cannot mix two states), with the shop and
+ * salesman saved with it, and the current currency and paper settings, which only change its presentation. An invoice
+ * posted before the shop and salesman were kept prints the current shop name, as it always did, and no address or
+ * salesman: nothing is invented for it.
  */
 export function readPrintableInvoice(db: Db, id: unknown): PrintableInvoice {
   const invoice = readInvoice(db, parseInput(InvoiceIdSchema, id))
   const settings = readSettings(db)
+  const { business } = invoice
   const currency = {
     code: settings['currency.code'],
     symbol: settings['currency.symbol'],
@@ -49,7 +52,16 @@ export function readPrintableInvoice(db: Db, id: unknown): PrintableInvoice {
     status: invoice.status,
     voidDate: invoice.voidDate,
     voidReason: invoice.voidReason,
-    businessName: settings['business.name'],
+    businessName: business?.shopName ?? settings['business.name'],
+    businessAddress: business?.shopAddress ?? null,
+    salesman:
+      business === null
+        ? null
+        : {
+            name: business.salesmanName,
+            phone1: business.salesmanPhone1,
+            phone2: business.salesmanPhone2
+          },
     currency,
     paperSize: settings['invoice.paperSize'],
     customer: {

@@ -6,7 +6,12 @@ import { toast } from 'sonner'
 import { formatDisplayDate } from '@shared/dates'
 import { PAYMENT_METHOD_LABELS } from '@shared/payments'
 import { invoicePrintPath } from '@shared/invoice-print'
-import { PRICE_TIER_LABELS, type InvoiceDetail } from '@shared/invoices'
+import {
+  PRICE_TIER_LABELS,
+  salesmanPhoneText,
+  type InvoiceBusinessDetails,
+  type InvoiceDetail
+} from '@shared/invoices'
 import { NotFoundPage } from '@renderer/app/NotFoundPage'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
@@ -169,6 +174,7 @@ export function InvoiceDetailView({
               <Field label="Checked By" value={invoice.checkedBy} />
               <Field label="Recorded" value={formatDateTime(invoice.createdAt)} />
               <Field label="Notes" value={invoice.notes} />
+              <BusinessFields business={invoice.business} />
             </dl>
           </div>
           <div className="flex min-w-56 flex-col items-end gap-1 text-right">
@@ -454,6 +460,47 @@ function InvoiceItemsTable({
         ))}
       </TableBody>
     </Table>
+  )
+}
+
+/** The shop and salesman saved with the invoice; an invoice posted before they were kept says so. */
+function BusinessFields({
+  business
+}: {
+  business: InvoiceBusinessDetails | null
+}): React.JSX.Element {
+  if (business === null) {
+    return (
+      <div className="sm:col-span-2">
+        <dt className="text-muted-foreground">Shop and salesman</dt>
+        <dd className="mt-0.5 text-muted-foreground">
+          Not saved: this invoice was posted before StockFlow kept them.
+        </dd>
+      </div>
+    )
+  }
+  const phones = salesmanPhoneText(business.salesmanPhone1, business.salesmanPhone2)
+  return (
+    <>
+      <div>
+        <dt className="text-muted-foreground">Sold by</dt>
+        <dd className="mt-0.5 whitespace-normal">
+          {business.shopName}
+          {business.shopAddress !== null && (
+            <span className="block text-xs text-muted-foreground">{business.shopAddress}</span>
+          )}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Salesman</dt>
+        <dd className="mt-0.5 whitespace-normal">
+          {business.salesmanName}
+          {phones !== null && (
+            <span className="block text-xs text-muted-foreground tabular-nums">{phones}</span>
+          )}
+        </dd>
+      </div>
+    </>
   )
 }
 

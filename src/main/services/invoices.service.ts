@@ -17,6 +17,7 @@ import {
   WALK_IN_FULL_PAYMENT_MESSAGE,
   WALK_IN_FULL_PAYMENT_RULE,
   formatInvoiceNumber,
+  invoiceBusinessDetails,
   type InvoiceChange,
   type InvoiceContext,
   type InvoiceCreateInput,
@@ -67,7 +68,7 @@ import { assertCurrencyDigits, readSettings } from './settings.service'
  *   unless the row is marked as an override; no fallback to the other tier) → totals (invoice-totals.ts, from database
  *   unit sizes and the accepted prices) → the walk-in customer pays exactly the total → stock (Q ≥ paid + free quantity
  *   per product) → COGS → INV- number →
- *   header → per line: item, quantity rows, SALE movement → INVOICE ledger entry (+total, when above zero) → payment
+ *   header (with a copy of the customer and of the shop and salesman in Settings) → per line: item, quantity rows, SALE movement → INVOICE ledger entry (+total, when above zero) → payment
  *   and PAYMENT ledger entry (when money was received) → stock invariants → customer balance check.
  *
  * COGS: each line leaves stock at round_half_up(V × qty ÷ Q) of a running, transaction-local Q/V per product, and the
@@ -136,6 +137,11 @@ interface InvoiceRow {
   cust_phone: string | null
   cust_address: string | null
   cust_city: string | null
+  shop_name_snapshot: string | null
+  shop_address_snapshot: string | null
+  salesman_name_snapshot: string | null
+  salesman_phone1_snapshot: string | null
+  salesman_phone2_snapshot: string | null
   price_tier: PriceTier
   gross_minor: number
   line_discount_minor: number
@@ -221,14 +227,18 @@ export function createInvoice(db: Db, input: unknown, now: Date): InvoiceSaveRes
     assertStockAvailable(db, lines)
     const costs = saleCosts(db, lines)
     const { seqNo, invoiceNo } = allocateInvoiceNumber(db, settings)
+    // The shop and salesman of this moment, read in this transaction: a later change in Settings never alters them.
+    const business = invoiceBusinessDetails(settings)
 
     const id = Number(
       db.run(
         `INSERT INTO invoices (invoice_no, seq_no, request_id, invoice_code, invoice_date, customer_id, cust_name,
            cust_shop_name, cust_phone, cust_address, cust_city, bilty_no, transport_name, adda_name, price_tier,
            gross_minor, line_discount_minor, line_scheme_minor, extra_discount_minor, net_minor, freight_minor,
-           total_minor, received_minor, previous_balance_minor, net_outstanding_minor, cogs_minor, checked_by, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           total_minor, received_minor, previous_balance_minor, net_outstanding_minor, cogs_minor, checked_by, notes,
+           shop_name_snapshot, shop_address_snapshot, salesman_name_snapshot, salesman_phone1_snapshot,
+           salesman_phone2_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           invoiceNo,
           seqNo,
@@ -257,7 +267,12 @@ export function createInvoice(db: Db, input: unknown, now: Date): InvoiceSaveRes
           totals.netOutstandingMinor,
           sumMinor(costs),
           invoice.checkedBy,
-          invoice.notes
+          invoice.notes,
+          business.shopName,
+          business.shopAddress,
+          business.salesmanName,
+          business.salesmanPhone1,
+          business.salesmanPhone2
         ]
       ).lastInsertRowid
     )
@@ -866,11 +881,16 @@ function saveResult(db: Db, id: number, replayed: boolean): InvoiceSaveResult {
   return { ...invoice, balanceAfterMinor: customerBalance(db, invoice.customerId), replayed }
 }
 
-/** An invoice exactly as saved, with its counter payment's current status and its dispatch change log. */
+/**
+ * An invoice exactly as saved, with its counter payment's current status and its dispatch change log. An invoice posted
+ * before the shop and salesman were kept (schema 4) has no `business`.
+ */
 export function readInvoice(db: Db, id: number): InvoiceDetail {
   const row = db.get<InvoiceRow>(
     `SELECT i.id, i.invoice_no, i.invoice_date, i.invoice_code, i.status, i.customer_id, c.code AS customer_code,
-            i.cust_name, i.cust_shop_name, i.cust_phone, i.cust_address, i.cust_city, i.price_tier, i.gross_minor,
+            i.cust_name, i.cust_shop_name, i.cust_phone, i.cust_address, i.cust_city, i.shop_name_snapshot,
+            i.shop_address_snapshot, i.salesman_name_snapshot, i.salesman_phone1_snapshot,
+            i.salesman_phone2_snapshot, i.price_tier, i.gross_minor,
             i.line_discount_minor, i.line_scheme_minor, i.extra_discount_minor, i.net_minor, i.freight_minor,
             i.total_minor, i.received_minor, i.previous_balance_minor, i.net_outstanding_minor, i.cogs_minor,
             i.bilty_no, i.transport_name, i.adda_name, i.checked_by, i.notes, i.dispatch_updated_at, i.void_reason,
@@ -931,6 +951,16 @@ export function readInvoice(db: Db, id: number): InvoiceDetail {
     customerPhone: row.cust_phone,
     customerAddress: row.cust_address,
     customerCity: row.cust_city,
+    business:
+      row.shop_name_snapshot === null || row.salesman_name_snapshot === null
+        ? null
+        : {
+            shopName: row.shop_name_snapshot,
+            shopAddress: row.shop_address_snapshot,
+            salesmanName: row.salesman_name_snapshot,
+            salesmanPhone1: row.salesman_phone1_snapshot,
+            salesmanPhone2: row.salesman_phone2_snapshot
+          },
     priceTier: row.price_tier,
     grossMinor: row.gross_minor,
     lineDiscountMinor: row.line_discount_minor,

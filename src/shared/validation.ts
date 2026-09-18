@@ -32,6 +32,15 @@ export function requiredText(label: string, max: number): z.ZodString {
     .regex(SINGLE_LINE, 'Use a single line of text.')
 }
 
+/** Optional single-line text kept as a string, trimmed: blank stays ''. For a setting that may be empty. */
+export function blankableText(max: number): z.ZodString {
+  return z
+    .string({ error: 'Enter text.' })
+    .trim()
+    .max(max, `Use at most ${max} characters.`)
+    .regex(SINGLE_LINE, 'Use a single line of text.')
+}
+
 /** Optional single-line text, trimmed; blank becomes null. */
 export function optionalText(max: number): z.ZodType<string | null, string | null> {
   return z

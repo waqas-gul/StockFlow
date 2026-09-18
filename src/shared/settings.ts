@@ -1,12 +1,21 @@
 import { z } from 'zod'
 import { MAX_MINOR_DIGITS } from './domain/guards'
-import { wholeNumber } from './validation'
+import { blankableText, requiredText, wholeNumber } from './validation'
 
 /*
  * The rules for every setting (the `settings` table stores each value as JSON). Shared: the main process validates
  * every read and write with them, and the Settings screen uses the same rules for its form. There is no
  * negative-stock setting (plan §8.3).
+ *
+ * The shop (name and address) and the one salesman (name and two phones) are printed on invoices. An invoice copies
+ * them when it is posted (invoices.shop_name_snapshot and the other snapshot columns), so changing them here changes
+ * only the invoices posted afterwards. There is no salesman table: V1 has one salesman.
  */
+
+export const BUSINESS_NAME_MAX = 100
+export const BUSINESS_ADDRESS_MAX = 200
+export const SALESMAN_NAME_MAX = 60
+export const SALESMAN_PHONE_MAX = 40
 
 const CURRENCY_CODE_MESSAGE = 'Use a three-letter currency code, such as PKR.'
 
@@ -17,10 +26,16 @@ const INVOICE_PREFIX_MESSAGE = 'Use up to 12 letters, digits, dots, dashes or un
 
 export const SETTING_SCHEMAS = {
   'business.name': z
-    .string({ error: 'Enter the business name.' })
+    .string({ error: 'Enter the shop name.' })
     .trim()
-    .min(1, 'Enter the business name.')
-    .max(100, 'Use at most 100 characters.'),
+    .min(1, 'Enter the shop name.')
+    .max(BUSINESS_NAME_MAX, `Use at most ${BUSINESS_NAME_MAX} characters.`),
+  /** Printed under the shop name; may be empty. */
+  'business.address': blankableText(BUSINESS_ADDRESS_MAX),
+  'salesman.name': requiredText('salesman name', SALESMAN_NAME_MAX),
+  /** Either phone may be empty. */
+  'salesman.phone1': blankableText(SALESMAN_PHONE_MAX),
+  'salesman.phone2': blankableText(SALESMAN_PHONE_MAX),
   'currency.code': z
     .string({ error: CURRENCY_CODE_MESSAGE })
     .regex(/^[A-Z]{3}$/, CURRENCY_CODE_MESSAGE),
@@ -45,11 +60,15 @@ export type SettingKey = keyof typeof SETTING_SCHEMAS
 export type Settings = { readonly [K in SettingKey]: z.output<(typeof SETTING_SCHEMAS)[K]> }
 
 /**
- * The settings the Settings screen shows and edits: business, currency and invoice. The backup keys are not among
+ * The settings the Settings screen shows and edits: shop, salesman, currency and invoice. The backup keys are not among
  * them: automatic backups follow the approved fixed policy (on, 14 daily and 12 monthly).
  */
 export const EDITABLE_SETTING_KEYS = Object.freeze([
   'business.name',
+  'business.address',
+  'salesman.name',
+  'salesman.phone1',
+  'salesman.phone2',
   'currency.code',
   'currency.symbol',
   'currency.minorDigits',
@@ -102,6 +121,10 @@ export interface SettingsView {
 export const EditableSettingsPatchSchema = z
   .strictObject({
     'business.name': SETTING_SCHEMAS['business.name'],
+    'business.address': SETTING_SCHEMAS['business.address'],
+    'salesman.name': SETTING_SCHEMAS['salesman.name'],
+    'salesman.phone1': SETTING_SCHEMAS['salesman.phone1'],
+    'salesman.phone2': SETTING_SCHEMAS['salesman.phone2'],
     'currency.code': SETTING_SCHEMAS['currency.code'],
     'currency.symbol': SETTING_SCHEMAS['currency.symbol'],
     'currency.minorDigits': SETTING_SCHEMAS['currency.minorDigits'],

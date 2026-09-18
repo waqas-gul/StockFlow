@@ -11,6 +11,7 @@ import {
   createSchemaDatabase,
   createTempDir,
   insertRow,
+  invoiceRow,
   rows,
   thrown,
   type Masters,
@@ -223,7 +224,7 @@ function simulateSale(productId: number, qtyBase: number, valueMinor: number, da
   const invoiceId = insertRow(
     db,
     'invoices',
-    rows.invoice(masters, {
+    invoiceRow(db, masters, {
       invoice_no: `INV-T${sales}`,
       seq_no: sales,
       request_id: `sale-request-${sales}`,

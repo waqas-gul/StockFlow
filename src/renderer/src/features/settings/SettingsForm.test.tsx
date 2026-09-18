@@ -6,6 +6,10 @@ import { SettingsForm } from './SettingsForm'
 
 const SETTINGS: EditableSettings = {
   'business.name': 'Ali Traders',
+  'business.address': 'Shop 12, Main Bazar, Mingora',
+  'salesman.name': 'Mansoor Iqbal',
+  'salesman.phone1': '03179927633',
+  'salesman.phone2': '03463820629',
   'currency.code': 'PKR',
   'currency.symbol': 'Rs',
   'currency.minorDigits': 2,
@@ -50,7 +54,11 @@ describe('SettingsForm', () => {
     const shown = text(render())
     for (const expected of [
       'Business',
-      'Business name',
+      'Shop name',
+      'Shop address',
+      'Salesman name',
+      'Phone 1',
+      'Phone 2',
       'Currency',
       'Currency code',
       'Currency symbol',
@@ -67,6 +75,26 @@ describe('SettingsForm', () => {
     }
     expect(shown).not.toMatch(/negative/i)
     expect(render()).not.toMatch(/type="file"/)
+  })
+
+  // The saved values reach these fields through toFormValues (settings-form.test.ts); React Hook Form fills them in
+  // after mounting, so the server-rendered markup has none.
+  it('lets the shop and salesman be edited at any time, and says a change only affects invoices posted afterwards', () => {
+    const html = render(SETTINGS, true, true)
+    for (const id of [
+      'businessName',
+      'businessAddress',
+      'salesmanName',
+      'salesmanPhone1',
+      'salesmanPhone2'
+    ]) {
+      expect(inputTag(html, id)).not.toMatch(/readonly|disabled=""/i)
+    }
+    expect(inputTag(html, 'salesmanPhone1')).toContain('inputMode="tel"')
+    expect(inputTag(html, 'businessAddress')).toContain('maxLength="200"')
+    expect(text(html)).toContain(
+      'Each invoice keeps the shop and salesman it was posted with: a change here applies to new invoices only.'
+    )
   })
 
   it('previews the first invoice number and marks the saved paper size', () => {

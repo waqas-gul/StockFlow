@@ -2,6 +2,7 @@ import './invoice-print.css'
 
 import { formatDisplayDate } from '@shared/dates'
 import type { PaperSize, PrintableInvoice } from '@shared/invoice-print'
+import { salesmanPhoneText } from '@shared/invoices'
 import {
   freeQuantityText,
   invoicePageCss,
@@ -19,7 +20,8 @@ export interface InvoicePrintDocumentProps {
 
 /**
  * The customer invoice as printed and saved as PDF (Phase 9B). It shows the saved invoice exactly: plain black on
- * white, bordered tables and right-aligned amounts. The main process prints this element's page; its data attributes
+ * white, bordered tables and right-aligned amounts. The header carries the shop, its address and the salesman saved
+ * with the invoice; an invoice posted before they were kept shows only the shop name, as it always did. The main process prints this element's page; its data attributes
  * tell it which invoice and paper are shown.
  */
 export function InvoicePrintDocument({
@@ -32,6 +34,10 @@ export function InvoicePrintDocument({
   const { totals } = invoice
   const deductions =
     totals.lineDiscountMinor > 0 || totals.lineSchemeMinor > 0 || totals.extraDiscountMinor > 0
+  const salesmanPhones =
+    invoice.salesman === null
+      ? null
+      : salesmanPhoneText(invoice.salesman.phone1, invoice.salesman.phone2)
 
   return (
     <article
@@ -49,7 +55,22 @@ export function InvoicePrintDocument({
       )}
 
       <header className="ip-head">
-        <p className="ip-business">{invoice.businessName}</p>
+        <div className="ip-seller">
+          <p className="ip-business">{invoice.businessName}</p>
+          {invoice.businessAddress !== null && (
+            <p className="ip-address">{invoice.businessAddress}</p>
+          )}
+          {invoice.salesman !== null && (
+            <>
+              <p className="ip-salesman">
+                Salesman: <span className="ip-strong">{invoice.salesman.name}</span>
+              </p>
+              {salesmanPhones !== null && (
+                <p className="ip-salesman">{`Phone: ${salesmanPhones}`}</p>
+              )}
+            </>
+          )}
+        </div>
         <div className="ip-doc">
           <h1 className="ip-title">INVOICE</h1>
           <dl className="ip-meta">

@@ -254,7 +254,9 @@ describe('readPrintableInvoice', () => {
       status: 'POSTED',
       voidDate: null,
       voidReason: null,
-      businessName: 'StockFlow',
+      businessName: 'Iftikhar and Arshad Traders',
+      businessAddress: null,
+      salesman: { name: 'Mansoor Iqbal', phone1: '03179927633', phone2: '03463820629' },
       currency: { code: 'PKR', symbol: 'Rs', minorDigits: 2 },
       paperSize: 'A4',
       customer: {
@@ -397,11 +399,16 @@ describe('readPrintableInvoice', () => {
     })
   })
 
-  it('uses the current business name and paper size for presentation only; the currency can no longer change', () => {
+  it('keeps the saved shop and salesman, uses the current paper size for presentation only; the currency can no longer change', () => {
     const invoice = postFullInvoice()
     const printed = readPrintableInvoice(db, invoice.id)
     expect(printed.currency).toEqual({ code: 'PKR', symbol: 'Rs', minorDigits: 2 })
-    updateSettings(db, { 'business.name': 'Madina Traders', 'invoice.paperSize': 'A5' })
+    updateSettings(db, {
+      'business.name': 'Madina Traders',
+      'business.address': 'Shop 9',
+      'salesman.name': 'Imran Khan',
+      'invoice.paperSize': 'A5'
+    })
     // An old invoice must never reprint as another currency: once amounts exist, the currency is locked.
     for (const patch of [
       { 'currency.code': 'USD' },
@@ -415,7 +422,8 @@ describe('readPrintableInvoice', () => {
     }
     expect(readPrintableInvoice(db, invoice.id)).toEqual({
       ...printed,
-      businessName: 'Madina Traders',
+      businessName: 'Iftikhar and Arshad Traders',
+      businessAddress: null,
       currency: { code: 'PKR', symbol: 'Rs', minorDigits: 2 },
       paperSize: 'A5'
     })

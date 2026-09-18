@@ -12,6 +12,10 @@ import {
  */
 export const SETTINGS_FIELDS = {
   businessName: 'business.name',
+  businessAddress: 'business.address',
+  salesmanName: 'salesman.name',
+  salesmanPhone1: 'salesman.phone1',
+  salesmanPhone2: 'salesman.phone2',
   currencyCode: 'currency.code',
   currencySymbol: 'currency.symbol',
   minorDigits: 'currency.minorDigits',
@@ -28,6 +32,10 @@ const FIELD_ENTRIES = Object.entries(SETTINGS_FIELDS) as Array<[SettingsField, E
 /** The same rules the main process applies (it validates again); a currency code is accepted in any case. */
 export const settingsFormSchema = z.object({
   businessName: SETTING_SCHEMAS['business.name'],
+  businessAddress: SETTING_SCHEMAS['business.address'],
+  salesmanName: SETTING_SCHEMAS['salesman.name'],
+  salesmanPhone1: SETTING_SCHEMAS['salesman.phone1'],
+  salesmanPhone2: SETTING_SCHEMAS['salesman.phone2'],
   currencyCode: z.string().trim().toUpperCase().pipe(SETTING_SCHEMAS['currency.code']),
   currencySymbol: SETTING_SCHEMAS['currency.symbol'],
   minorDigits: SETTING_SCHEMAS['currency.minorDigits'],
@@ -43,6 +51,10 @@ export type SettingsFormValues = z.output<typeof settingsFormSchema>
 export function toFormValues(settings: EditableSettings): SettingsFormInput {
   return {
     businessName: settings['business.name'],
+    businessAddress: settings['business.address'],
+    salesmanName: settings['salesman.name'],
+    salesmanPhone1: settings['salesman.phone1'],
+    salesmanPhone2: settings['salesman.phone2'],
     currencyCode: settings['currency.code'],
     currencySymbol: settings['currency.symbol'],
     minorDigits: settings['currency.minorDigits'],

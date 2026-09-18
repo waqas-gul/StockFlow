@@ -14,6 +14,10 @@ const RS = { minorDigits: 2, symbol: 'Rs' }
 const settings: SettingsView = {
   values: {
     'business.name': 'Ali Traders',
+    'business.address': '',
+    'salesman.name': 'Mansoor Iqbal',
+    'salesman.phone1': '03179927633',
+    'salesman.phone2': '03463820629',
     'currency.code': 'PKR',
     'currency.symbol': 'Rs',
     'currency.minorDigits': 2,

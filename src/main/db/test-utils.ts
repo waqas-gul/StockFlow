@@ -450,10 +450,31 @@ export interface Documents {
   readonly paymentId: number
 }
 
+/** The shop and salesman a test invoice keeps (0004 requires them of every invoice saved from then on). */
+export const INVOICE_BUSINESS_SNAPSHOT: Row = Object.freeze({
+  shop_name_snapshot: 'Acme Traders',
+  shop_address_snapshot: 'Shop 4, Main Bazar',
+  salesman_name_snapshot: 'Hamid',
+  salesman_phone1_snapshot: '0300-7654321',
+  salesman_phone2_snapshot: null
+})
+
+/** rows.invoice for `db`: with the shop and salesman snapshot once its schema has one (0004). */
+export function invoiceRow(db: Db, m: Masters, overrides: Row = {}): Row {
+  const snapshot = db.get(
+    "SELECT 1 AS found FROM pragma_table_info('invoices') WHERE name = 'shop_name_snapshot'"
+  )
+  return {
+    ...rows.invoice(m),
+    ...(snapshot === undefined ? {} : INVOICE_BUSINESS_SNAPSHOT),
+    ...overrides
+  }
+}
+
 export function insertDocuments(db: Db, m: Masters): Documents {
   const receiptId = insertRow(db, 'stock_receipts', rows.receipt())
   const receiptItemId = insertRow(db, 'stock_receipt_items', rows.receiptItem(m, receiptId))
-  const invoiceId = insertRow(db, 'invoices', rows.invoice(m))
+  const invoiceId = insertRow(db, 'invoices', invoiceRow(db, m))
   const invoiceItemId = insertRow(db, 'invoice_items', rows.invoiceItem(m, invoiceId))
   insertRow(db, 'invoice_item_quantities', rows.quantity(invoiceItemId, m.boxId))
   insertRow(

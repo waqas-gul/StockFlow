@@ -11,6 +11,8 @@ import {
   PRICE_TIERS,
   PRICE_TIER_LABELS,
   TRANSPORT_NAME_MAX,
+  salesmanPhoneText,
+  type InvoiceBusinessDetails,
   type InvoiceContext
 } from '@shared/invoices'
 import type { ProductSearchItem } from '@shared/products'
@@ -35,6 +37,8 @@ export interface InvoiceEditorProps {
   readonly currency: CurrencyFormat
   /** Today, the next invoice number and the posting-date floor, from the main process. */
   readonly context: InvoiceContext | undefined
+  /** The shop and salesman in Settings: printed on the invoice and saved with it when it is posted. */
+  readonly business: InvoiceBusinessDetails
   /** The chosen customer's current balance (read fresh). */
   readonly customerBalanceMinor: number
   /** The walk-in customer exists and is active. */
@@ -65,6 +69,7 @@ export function InvoiceEditor({
   summary,
   currency,
   context,
+  business,
   customerBalanceMinor,
   walkInAvailable,
   errors,
@@ -262,7 +267,7 @@ export function InvoiceEditor({
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
-        <div aria-hidden className="hidden lg:block" />
+        <InvoiceBusinessPanel business={business} />
         <InvoiceTotalsPanel
           draft={draft}
           summary={summary}
@@ -288,5 +293,42 @@ export function InvoiceEditor({
         </Button>
       </div>
     </div>
+  )
+}
+
+/**
+ * The shop and salesman the invoice will be printed with, from Settings. Read-only here: posting saves them with the
+ * invoice, so a later change in Settings never alters it.
+ */
+function InvoiceBusinessPanel({
+  business
+}: {
+  business: InvoiceBusinessDetails
+}): React.JSX.Element {
+  const phones = salesmanPhoneText(business.salesmanPhone1, business.salesmanPhone2)
+  return (
+    <section
+      aria-label="Printed on the invoice"
+      className="self-start rounded-xl border bg-card px-4 py-3 text-sm text-card-foreground shadow-sm"
+    >
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Printed on the invoice
+      </h2>
+      <p className="mt-1.5 font-semibold">{business.shopName}</p>
+      {business.shopAddress !== null && (
+        <p className="text-muted-foreground">{business.shopAddress}</p>
+      )}
+      <p className="mt-1.5">
+        Salesman: <span className="font-medium">{business.salesmanName}</span>
+      </p>
+      {phones !== null && (
+        <p>
+          Phone: <span className="tabular-nums">{phones}</span>
+        </p>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">
+        From Settings. Saved with the invoice when it is posted.
+      </p>
+    </section>
   )
 }
