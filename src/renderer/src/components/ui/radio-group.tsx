@@ -10,7 +10,10 @@ function RadioGroup({
   return (
     <RadioGroupPrimitive.Root
       data-slot="radio-group"
-      className={cn('grid gap-3', className)}
+      // `relative` holds the hidden inputs Radix renders beside each item for form submission. They are absolutely
+      // positioned, so without a positioned ancestor they resolve against the page itself, land wherever the group
+      // happens to sit and stretch the whole document — a second scrollbar, with dead space under the page.
+      className={cn('relative grid gap-3', className)}
       {...props}
     />
   )

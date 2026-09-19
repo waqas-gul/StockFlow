@@ -361,10 +361,14 @@ describe('suppliers: create, search, edit and deactivate', () => {
     expect(names('35557788')).toEqual([xyz.code])
     expect(names('karachi')).toEqual([xyz.code])
     expect(names('traders karachi')).toEqual([xyz.code])
-    expect(names('')).toEqual([])
+    // Nothing typed browses them all, by name.
+    expect(names('')).toEqual([abc.code, xyz.code])
+    expect(names('  ')).toEqual([abc.code, xyz.code])
     setSupplierActive(db, { id: xyz.id, active: false })
     expect(names('karachi')).toEqual([])
     expect(names('karachi', true)).toEqual([xyz.code])
+    expect(names('')).toEqual([abc.code])
+    expect(names('', true)).toEqual([abc.code, xyz.code])
   })
 
   it('lists suppliers by name, with balances, a status filter and pages', () => {
