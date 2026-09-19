@@ -4,6 +4,7 @@ import { Search } from 'lucide-react'
 import type { ProductSearchItem } from '@shared/products'
 import { Input } from '@renderer/components/ui/input'
 import { productSearchQuery } from '@renderer/lib/app-queries'
+import { useAnchoredList } from '@renderer/lib/use-anchored-list'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
 import { cn } from '@renderer/lib/utils'
 
@@ -39,6 +40,7 @@ export function ProductPicker({
   const [text, setText] = useState<string | null>(null)
   const [highlight, setHighlight] = useState(0)
   const editing = text !== null
+  const { anchor, style } = useAnchoredList(editing)
   const query = useDebouncedValue((text ?? '').trim(), 150)
   const results = useQuery({
     ...productSearchQuery({ query, limit: SEARCH_LIMIT, includeInactive }),
@@ -54,7 +56,7 @@ export function ProductPicker({
   }
 
   return (
-    <div className="relative">
+    <div ref={anchor} className="relative">
       <Search
         className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
@@ -102,7 +104,8 @@ export function ProductPicker({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-72 w-full min-w-72 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          style={style}
+          className="fixed z-50 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {items.map((item, index) => (
             <li
@@ -133,7 +136,10 @@ export function ProductPicker({
         </ul>
       )}
       {editing && results.isSuccess && items.length === 0 && (
-        <p className="absolute z-50 mt-1 w-full rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md">
+        <p
+          style={style}
+          className="fixed z-50 rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md"
+        >
           {query === '' ? 'No products yet. Add one under Products.' : 'No product matches.'}
         </p>
       )}

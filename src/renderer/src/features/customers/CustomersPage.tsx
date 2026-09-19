@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users } from 'lucide-react'
+import { Plus, Users } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import type { CustomerListItem, CustomerStatusFilter } from '@shared/customers'
@@ -13,7 +13,6 @@ import {
 } from '@renderer/components/ui/alert-dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Card, CardContent } from '@renderer/components/ui/card'
-import { Input } from '@renderer/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -32,6 +31,7 @@ import { Pager } from '../stock/Pager'
 import { toggleCustomerActive, type CustomerNotifier } from './customer-actions'
 import { balanceText, deactivateText } from './customer-display'
 import { CustomerFormDialog, type CustomerEditorTarget } from './CustomerFormDialog'
+import { CustomerSearchBox } from './CustomerSearchBox'
 import { CustomersTable } from './CustomersTable'
 
 export const CUSTOMERS_PAGE_SIZE = 25
@@ -97,20 +97,14 @@ export function CustomersPage(): React.JSX.Element {
 
       <Card className="gap-0 py-0">
         <CardContent className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-          <div className="relative min-w-64 flex-1">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              type="search"
-              aria-label="Search customers"
+          <div className="min-w-64 flex-1">
+            <CustomerSearchBox
+              ariaLabel="Search customers"
               placeholder="Search by code, name, shop, phone or city"
-              className="pl-8"
-              maxLength={100}
+              includeInactive={status !== 'active'}
               value={search}
-              onChange={(event) => {
-                setSearch(event.target.value)
+              onChange={(value) => {
+                setSearch(value)
                 setPage(1)
               }}
             />
