@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { HandCoins, Plus, Search, Truck } from 'lucide-react'
+import { HandCoins, Plus, Truck } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import type { SupplierListItem, SupplierStatusFilter } from '@shared/suppliers'
 import { pageLinks, wantsForm } from '@renderer/app/page-links'
 import { Button } from '@renderer/components/ui/button'
 import { Card, CardContent } from '@renderer/components/ui/card'
-import { Input } from '@renderer/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -21,6 +20,7 @@ import {
   supplierListQuery
 } from '@renderer/lib/app-queries'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
+import { SupplierSearchBox } from './SupplierSearchBox'
 import type { CurrencyFormat } from '../products/product-display'
 import { Pager } from '../stock/Pager'
 import { PaySupplierDialog } from './PaySupplierDialog'
@@ -103,20 +103,14 @@ export function SuppliersPage(): React.JSX.Element {
 
       <Card className="gap-0 py-0">
         <CardContent className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-          <div className="relative min-w-64 flex-1">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              type="search"
-              aria-label="Search suppliers"
+          <div className="min-w-64 flex-1">
+            <SupplierSearchBox
+              ariaLabel="Search suppliers"
               placeholder="Search by code, name, contact, phone or city"
-              className="pl-8"
-              maxLength={100}
+              includeInactive={status !== 'active'}
               value={search}
-              onChange={(event) => {
-                setSearch(event.target.value)
+              onChange={(value) => {
+                setSearch(value)
                 setPage(1)
               }}
             />

@@ -4,41 +4,41 @@ import {
   SuggestionSearchBox,
   type Suggestion
 } from '@renderer/components/common/SuggestionSearchBox'
-import { customerSearchQuery } from '@renderer/lib/app-queries'
+import { supplierSearchQuery } from '@renderer/lib/app-queries'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
-import { CustomerOption } from './CustomerOption'
+import { SupplierOption } from './SupplierOption'
 
-/** How many customers the suggestions hold: anything past this is narrowed by typing, not by scrolling. */
+/** How many suppliers the suggestions hold: anything past this is narrowed by typing, not by scrolling. */
 const SEARCH_LIMIT = 50
 
-export interface CustomerSearchBoxProps {
+export interface SupplierSearchBoxProps {
   readonly value: string
   readonly onChange: (value: string) => void
   readonly ariaLabel: string
   readonly placeholder: string
-  /** Suggest inactive customers too, when the list they filter shows them. */
+  /** Suggest retired suppliers too, when the list they filter shows them. */
   readonly includeInactive?: boolean
 }
 
-/** A search box over a list of customers, suggesting the customers themselves: code and name go into the search. */
-export function CustomerSearchBox({
+/** A search box over a list of suppliers, suggesting the suppliers themselves: code and name go into the search. */
+export function SupplierSearchBox({
   value,
   onChange,
   ariaLabel,
   placeholder,
   includeInactive = false
-}: CustomerSearchBoxProps): React.JSX.Element {
+}: SupplierSearchBoxProps): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const query = useDebouncedValue(value.trim(), 150)
   const results = useQuery({
-    ...customerSearchQuery({ query, limit: SEARCH_LIMIT, includeInactive }),
+    ...supplierSearchQuery({ query, limit: SEARCH_LIMIT, includeInactive }),
     enabled: open
   })
   const items: Suggestion[] = open
-    ? (results.data ?? []).map((customer) => ({
-        key: customer.id,
-        search: `${customer.code} ${customer.name}`,
-        content: <CustomerOption customer={customer} />
+    ? (results.data ?? []).map((supplier) => ({
+        key: supplier.id,
+        search: `${supplier.code} ${supplier.name}`,
+        content: <SupplierOption supplier={supplier} />
       }))
     : []
 

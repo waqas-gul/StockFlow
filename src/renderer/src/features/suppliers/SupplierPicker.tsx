@@ -4,8 +4,10 @@ import { Search } from 'lucide-react'
 import type { SupplierListItem } from '@shared/suppliers'
 import { Input } from '@renderer/components/ui/input'
 import { supplierSearchQuery } from '@renderer/lib/app-queries'
+import { useAnchoredList } from '@renderer/lib/use-anchored-list'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
 import { cn } from '@renderer/lib/utils'
+import { SupplierOption } from './SupplierOption'
 
 export interface SupplierPickerProps {
   /** The chosen supplier's label, or '' when none is chosen. */
@@ -19,9 +21,12 @@ export interface SupplierPickerProps {
   readonly includeInactive?: boolean
 }
 
+/** How many suppliers the list holds: anything past this is narrowed by typing, not by scrolling. */
+const SEARCH_LIMIT = 50
+
 /**
- * Type a code, name, contact person, phone or city, then pick with the mouse or the keyboard (↑ ↓ Enter; Enter alone
- * takes the best match).
+ * Opens on the supplier list and narrows it as you type a code, name, contact person, phone or city; pick with the
+ * mouse or the keyboard (↑ ↓ Enter; Enter alone takes the best match).
  */
 export function SupplierPicker({
   label,
@@ -36,12 +41,13 @@ export function SupplierPicker({
   const [text, setText] = useState<string | null>(null)
   const [highlight, setHighlight] = useState(0)
   const editing = text !== null
+  const { anchor, style } = useAnchoredList(editing)
   const query = useDebouncedValue((text ?? '').trim(), 150)
   const results = useQuery({
-    ...supplierSearchQuery({ query, limit: 10, includeInactive }),
-    enabled: editing && query !== ''
+    ...supplierSearchQuery({ query, limit: SEARCH_LIMIT, includeInactive }),
+    enabled: editing
   })
-  const items = editing && query !== '' ? (results.data ?? []) : []
+  const items = editing ? (results.data ?? []) : []
 
   const pick = (item: SupplierListItem | undefined): void => {
     if (item === undefined) return
@@ -51,7 +57,7 @@ export function SupplierPicker({
   }
 
   return (
-    <div className="relative">
+    <div ref={anchor} className="relative">
       <Search
         className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
@@ -69,9 +75,11 @@ export function SupplierPicker({
         maxLength={100}
         disabled={disabled}
         value={text ?? label}
-        onFocus={(event) => {
-          setText(label)
-          event.currentTarget.select()
+        // Opening starts empty, on the whole list, ready to be narrowed; leaving puts the chosen supplier back.
+        onFocus={() => setText('')}
+        // Clicking the box again right after picking fires no focus event, because it never lost focus: open here too.
+        onMouseDown={() => {
+          if (text === null) setText('')
         }}
         onBlur={() => setText(null)}
         onChange={(event) => {
@@ -97,7 +105,8 @@ export function SupplierPicker({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-72 w-full min-w-72 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          style={style}
+          className="fixed z-50 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {items.map((item, index) => (
             <li
@@ -115,22 +124,21 @@ export function SupplierPicker({
               }}
               onMouseEnter={() => setHighlight(index)}
             >
-              <span className="font-mono text-xs">{item.code}</span>{' '}
-              <span className="font-medium">{item.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {[item.contactPerson, item.city, item.phone]
-                  .filter((part) => part !== null)
-                  .map((part) => ` · ${part}`)
-                  .join('')}
-                {!item.isActive && ' · inactive'}
-              </span>
+              <SupplierOption supplier={item} />
             </li>
           ))}
         </ul>
       )}
-      {editing && query !== '' && results.isSuccess && items.length === 0 && (
-        <p className="absolute z-50 mt-1 w-full rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md">
-          {includeInactive ? 'No supplier matches.' : 'No active supplier matches.'}
+      {editing && results.isSuccess && items.length === 0 && (
+        <p
+          style={style}
+          className="fixed z-50 rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md"
+        >
+          {query === ''
+            ? 'No suppliers yet. Add one under Suppliers.'
+            : includeInactive
+              ? 'No supplier matches.'
+              : 'No active supplier matches.'}
         </p>
       )}
     </div>

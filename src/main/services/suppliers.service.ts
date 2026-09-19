@@ -122,15 +122,24 @@ export function listSuppliers(db: Db, input: unknown): ListPage<SupplierListItem
 
 /**
  * Quick lookup for choosing a supplier: every word must match the code, name, contact person, phone or city. An exact
- * code comes first, then codes and names that start with the text.
+ * code comes first, then codes and names that start with the text. With nothing typed every supplier comes back by
+ * name, so the picker opens on a list to browse instead of on nothing.
  */
 export function searchSuppliers(db: Db, input: unknown): SupplierListItem[] {
   const { query, limit, includeInactive } = parseInput(SupplierSearchInputSchema, input)
   const clauses: string[] = []
   const params: SqlValue[] = []
   addSearch(query, clauses, params)
-  if (clauses.length === 0) return []
   if (!includeInactive) clauses.push('s.is_active = 1')
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+  if (query === '') {
+    return db
+      .all<SupplierQueryRow>(
+        `${SELECT_SUPPLIERS} ${where} ORDER BY s.name, s.code, s.id LIMIT ?`,
+        [limit]
+      )
+      .map(toListItem)
+  }
   const prefix = `${escapeLike(query)}%`
   const rows = db.all<SupplierQueryRow>(
     `SELECT * FROM (
@@ -139,7 +148,7 @@ export function searchSuppliers(db: Db, input: unknown): SupplierListItem[] {
          `SELECT CASE WHEN s.code = ? THEN 0 WHEN s.code LIKE ? ESCAPE '\\' THEN 1
                       WHEN s.name LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END AS rank, s.id,`
        )}
-       WHERE ${clauses.join(' AND ')}
+       ${where}
      )
      ORDER BY rank, name, code, id
      LIMIT ?`,

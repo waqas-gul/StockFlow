@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Pencil, Plus, Search, Tags } from 'lucide-react'
+import { Ban, Pencil, Plus, Tags } from 'lucide-react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { formatDisplayDate, localDateString } from '@shared/dates'
@@ -39,6 +39,7 @@ import {
   settingsQuery
 } from '@renderer/lib/app-queries'
 import { useDebouncedValue } from '@renderer/lib/use-debounced-value'
+import { ExpenseSearchBox } from './ExpenseSearchBox'
 import { formatAmount, type CurrencyFormat } from '../products/product-display'
 import { Pager } from '../stock/Pager'
 import { submitExpenseVoid, type ExpenseNotifier } from './expense-actions'
@@ -145,19 +146,12 @@ export function ExpensesPage(): React.JSX.Element {
 
       <Card className="gap-0 py-0">
         <CardContent className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
-          <div className="relative min-w-64 flex-1">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              type="search"
-              aria-label="Search expenses"
+          <div className="min-w-64 flex-1">
+            <ExpenseSearchBox
+              ariaLabel="Search expenses"
               placeholder="Search by description or category"
-              className="pl-8"
-              maxLength={100}
               value={search}
-              onChange={(event) => changeFilter(setSearch)(event.target.value)}
+              onChange={changeFilter(setSearch)}
             />
           </div>
           <div className="grid gap-1">
