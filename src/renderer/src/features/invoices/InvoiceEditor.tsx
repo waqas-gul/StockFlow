@@ -20,6 +20,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
+import { Textarea } from '@renderer/components/ui/textarea'
 import { Table, TableHead, TableHeader, TableRow } from '@renderer/components/ui/table'
 import { cn } from '@renderer/lib/utils'
 import { balanceClassName, balanceText, customerLabel } from '../customers/customer-display'
@@ -60,8 +61,7 @@ const OPTIONAL_FIELDS: ReadonlyArray<[DraftTextField, string, number, string]> =
   ['biltyNo', 'Bilty No', BILTY_NO_MAX, 'Optional.'],
   ['transportName', 'Transport', TRANSPORT_NAME_MAX, 'Optional.'],
   ['addaName', 'Adda', ADDA_NAME_MAX, 'Optional.'],
-  ['checkedBy', 'Checked By', CHECKED_BY_MAX, 'Optional.'],
-  ['notes', 'Notes', INVOICE_NOTES_MAX, 'Optional.']
+  ['checkedBy', 'Checked By', CHECKED_BY_MAX, 'Optional.']
 ]
 
 /** Sales → New Invoice: the header, the product lines and the totals of one invoice being entered. */
@@ -305,8 +305,30 @@ export function InvoiceEditor({
         </CardContent>
       </Card>
 
+      <InvoiceBusinessPanel business={business} />
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
-        <InvoiceBusinessPanel business={business} />
+        <Card className="gap-0 py-0">
+          <CardHeader className="border-b px-4 py-3">
+            <CardTitle className="text-base">Notes</CardTitle>
+          </CardHeader>
+          {/* flex-1 and h-full so the box grows to the height the totals beside it set, instead of leaving a gap. */}
+          <CardContent className="flex flex-1 flex-col gap-1.5 px-4 py-4">
+            <Textarea
+              id="invoice-notes"
+              aria-label="Notes"
+              maxLength={INVOICE_NOTES_MAX}
+              placeholder="Anything to remember about this bill. Optional."
+              aria-invalid={errors.notes ? true : undefined}
+              className="h-full min-h-40 flex-1 resize-none"
+              value={draft.notes}
+              onChange={(event) =>
+                dispatch({ type: 'setField', field: 'notes', value: event.target.value })
+              }
+            />
+            <CellError message={errors.notes} />
+          </CardContent>
+        </Card>
         <InvoiceTotalsPanel
           draft={draft}
           summary={summary}
@@ -348,26 +370,36 @@ function InvoiceBusinessPanel({
   return (
     <section
       aria-label="Printed on the invoice"
-      className="self-start rounded-xl border bg-card px-4 py-3 text-sm text-card-foreground shadow-sm"
+      // A strip across the page, its fields side by side: stacked in a narrow box they left the row half empty.
+      className="rounded-xl border bg-card px-4 py-3 text-sm text-card-foreground shadow-sm"
     >
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Printed on the invoice
-      </h2>
-      <p className="mt-1.5 font-semibold">{business.shopName}</p>
-      {business.shopAddress !== null && (
-        <p className="text-muted-foreground">{business.shopAddress}</p>
-      )}
-      <p className="mt-1.5">
-        Salesman: <span className="font-medium">{business.salesmanName}</span>
-      </p>
-      {phones !== null && (
-        <p>
-          Phone: <span className="tabular-nums">{phones}</span>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Printed on the invoice
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          From Settings. Saved with the invoice when it is posted.
         </p>
-      )}
-      <p className="mt-2 text-xs text-muted-foreground">
-        From Settings. Saved with the invoice when it is posted.
-      </p>
+      </div>
+      <dl className="mt-2 grid gap-x-8 gap-y-2 sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-muted-foreground">Shop</dt>
+          <dd className="font-semibold">{business.shopName}</dd>
+          {business.shopAddress !== null && (
+            <dd className="text-muted-foreground">{business.shopAddress}</dd>
+          )}
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Salesman</dt>
+          <dd className="font-medium">{business.salesmanName}</dd>
+        </div>
+        {phones !== null && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Phone</dt>
+            <dd className="tabular-nums">{phones}</dd>
+          </div>
+        )}
+      </dl>
     </section>
   )
 }

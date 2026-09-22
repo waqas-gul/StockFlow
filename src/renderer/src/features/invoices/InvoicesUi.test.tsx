@@ -226,9 +226,9 @@ describe('New Invoice screen', () => {
     )
     expect(section).not.toBeNull()
     expect(text(section![1])).toBe(
-      'Printed on the invoice Iftikhar and Arshad Traders Shop 12, Main Bazar, Mingora ' +
-        'Salesman: Mansoor Iqbal Phone: 03179927633 / 03463820629 ' +
-        'From Settings. Saved with the invoice when it is posted.'
+      'Printed on the invoice From Settings. Saved with the invoice when it is posted. ' +
+        'Shop Iftikhar and Arshad Traders Shop 12, Main Bazar, Mingora ' +
+        'Salesman Mansoor Iqbal Phone 03179927633 / 03463820629'
     )
     expect(section![1]).not.toMatch(/<input|<textarea|<select|<button/)
   })
@@ -241,8 +241,8 @@ describe('New Invoice screen', () => {
       html
     )
     expect(text(section![1])).toBe(
-      'Printed on the invoice Iftikhar and Arshad Traders Salesman: Mansoor Iqbal ' +
-        'From Settings. Saved with the invoice when it is posted.'
+      'Printed on the invoice From Settings. Saved with the invoice when it is posted. ' +
+        'Shop Iftikhar and Arshad Traders Salesman Mansoor Iqbal'
     )
   })
 
